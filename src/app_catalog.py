@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,31 +17,27 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+
+import hashlib
 import os
 import re
-import hashlib
+from logging import getLogger
 
 from moulinette import m18n
-from moulinette.utils.log import getActionLogger
+from moulinette.utils.filesystem import mkdir, read_json, read_yaml, write_to_json
 from moulinette.utils.network import download_json
-from moulinette.utils.filesystem import (
-    read_json,
-    read_yaml,
-    write_to_json,
-    write_to_yaml,
-    mkdir,
-)
 
-from yunohost.utils.i18n import _value_for_locale
 from yunohost.utils.error import YunohostError
+from yunohost.utils.i18n import _value_for_locale
 
-logger = getActionLogger("yunohost.app_catalog")
+logger = getLogger("yunohost.app_catalog")
 
 APPS_CATALOG_CACHE = "/var/cache/yunohost/repo"
 APPS_CATALOG_LOGOS = "/usr/share/yunohost/applogos"
 APPS_CATALOG_CONF = "/etc/yunohost/apps_catalog.yml"
 APPS_CATALOG_API_VERSION = 3
 APPS_CATALOG_DEFAULT_URL = "https://app.yunohost.org/default"
+DEFAULT_APPS_CATALOG_LIST = [{"id": "default", "url": APPS_CATALOG_DEFAULT_URL}]
 
 
 def app_catalog(full=False, with_categories=False, with_antifeatures=False):
@@ -120,33 +117,21 @@ def app_search(string):
     return matching_apps
 
 
-def _initialize_apps_catalog_system():
-    """
-    This function is meant to intialize the apps_catalog system with YunoHost's default app catalog.
-    """
-
-    default_apps_catalog_list = [{"id": "default", "url": APPS_CATALOG_DEFAULT_URL}]
-
-    try:
-        logger.debug(
-            "Initializing apps catalog system with YunoHost's default app list"
-        )
-        write_to_yaml(APPS_CATALOG_CONF, default_apps_catalog_list)
-    except Exception as e:
-        raise YunohostError(
-            f"Could not initialize the apps catalog system... : {e}", raw_msg=True
-        )
-
-    logger.success(m18n.n("apps_catalog_init_success"))
-
-
 def _read_apps_catalog_list():
     """
     Read the json corresponding to the list of apps catalogs
     """
 
+    if not os.path.exists(APPS_CATALOG_CONF):
+        return DEFAULT_APPS_CATALOG_LIST
+
     try:
         list_ = read_yaml(APPS_CATALOG_CONF)
+        if list_ == DEFAULT_APPS_CATALOG_LIST:
+            try:
+                os.remove(APPS_CATALOG_CONF)
+            except Exception:
+                pass
         # Support the case where file exists but is empty
         # by returning [] if list_ is None
         return list_ if list_ else []
@@ -157,7 +142,6 @@ def _read_apps_catalog_list():
 
 
 def _actual_apps_catalog_api_url(base_url):
-
     return f"{base_url}/v{APPS_CATALOG_API_VERSION}/apps.json"
 
 
@@ -230,8 +214,9 @@ def _update_apps_catalog():
                 f"(Will fetch {len(logos_to_download)} logos, this may take a couple minutes)"
             )
 
-        import requests
         from multiprocessing.pool import ThreadPool
+
+        import requests
 
         def fetch_logo(logo_hash):
             try:
@@ -269,7 +254,6 @@ def _load_apps_catalog():
     merged_catalog = {"apps": {}, "categories": [], "antifeatures": []}
 
     for apps_catalog_id in [L["id"] for L in _read_apps_catalog_list()]:
-
         # Let's load the json from cache for this catalog
         cache_file = f"{APPS_CATALOG_CACHE}/{apps_catalog_id}.json"
 
@@ -298,7 +282,6 @@ def _load_apps_catalog():
 
         # Add apps from this catalog to the output
         for app, info in apps_catalog_content["apps"].items():
-
             # (N.B. : there's a small edge case where multiple apps catalog could be listing the same apps ...
             #         in which case we keep only the first one found)
             if app in merged_catalog["apps"]:

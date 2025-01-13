@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,30 +17,30 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import re
+
+import logging
 import os
 import random
+import re
 from typing import List
 
-from moulinette.utils import log
+from moulinette.utils.filesystem import read_file
 from moulinette.utils.network import download_text
 from moulinette.utils.process import check_output
-from moulinette.utils.filesystem import read_file
 
 from yunohost.diagnosis import Diagnoser
+from yunohost.settings import settings_get
 from yunohost.utils.network import get_network_interfaces
 
-logger = log.getActionLogger("yunohost.diagnosis")
+logger = logging.getLogger("yunohost.diagnosis")
 
 
 class MyDiagnoser(Diagnoser):
-
     id_ = os.path.splitext(os.path.basename(__file__))[0].split("-")[1]
     cache_duration = 600
     dependencies: List[str] = []
 
     def run(self):
-
         # ############################################################ #
         # PING : Check that we can ping outside at least in ipv4 or v6 #
         # ############################################################ #
@@ -74,9 +75,11 @@ class MyDiagnoser(Diagnoser):
             yield dict(
                 meta={"test": "dnsresolv"},
                 status="ERROR",
-                summary="diagnosis_ip_broken_dnsresolution"
-                if good_resolvconf
-                else "diagnosis_ip_broken_resolvconf",
+                summary=(
+                    "diagnosis_ip_broken_dnsresolution"
+                    if good_resolvconf
+                    else "diagnosis_ip_broken_resolvconf"
+                ),
             )
             return
         # Otherwise, if the resolv conf is bad but we were able to resolve domain name,
@@ -118,10 +121,15 @@ class MyDiagnoser(Diagnoser):
             else:
                 return local_ip
 
+        def is_ipvx_important(x):
+            return settings_get("misc.network.dns_exposure") in ["both", "ipv" + str(x)]
+
         yield dict(
             meta={"test": "ipv4"},
             data={"global": ipv4, "local": get_local_ip("ipv4")},
-            status="SUCCESS" if ipv4 else "ERROR",
+            status=(
+                "SUCCESS" if ipv4 else "ERROR" if is_ipvx_important(4) else "WARNING"
+            ),
             summary="diagnosis_ip_connected_ipv4" if ipv4 else "diagnosis_ip_no_ipv4",
             details=["diagnosis_ip_global", "diagnosis_ip_local"] if ipv4 else None,
         )
@@ -129,17 +137,32 @@ class MyDiagnoser(Diagnoser):
         yield dict(
             meta={"test": "ipv6"},
             data={"global": ipv6, "local": get_local_ip("ipv6")},
-            status="SUCCESS" if ipv6 else "WARNING",
+            status=(
+                "SUCCESS"
+                if ipv6
+                else (
+                    "ERROR"
+                    if settings_get("misc.network.dns_exposure") == "ipv6"
+                    else "WARNING"
+                )
+            ),
             summary="diagnosis_ip_connected_ipv6" if ipv6 else "diagnosis_ip_no_ipv6",
-            details=["diagnosis_ip_global", "diagnosis_ip_local"]
-            if ipv6
-            else ["diagnosis_ip_no_ipv6_tip"],
+            details=(
+                ["diagnosis_ip_global", "diagnosis_ip_local"]
+                if ipv6
+                else [
+                    (
+                        "diagnosis_ip_no_ipv6_tip_important"
+                        if is_ipvx_important(6)
+                        else "diagnosis_ip_no_ipv6_tip"
+                    )
+                ]
+            ),
         )
 
         # TODO / FIXME : add some attempt to detect ISP (using whois ?) ?
 
     def can_ping_outside(self, protocol=4):
-
         assert protocol in [
             4,
             6,
@@ -218,7 +241,6 @@ class MyDiagnoser(Diagnoser):
         return len(content) == 1 and content[0].split() == ["nameserver", "127.0.0.1"]
 
     def get_public_ip(self, protocol=4):
-
         # FIXME - TODO : here we assume that DNS resolution for ip.yunohost.org is working
         # but if we want to be able to diagnose DNS resolution issues independently from
         # internet connectivity, we gotta rely on fixed IPs first....

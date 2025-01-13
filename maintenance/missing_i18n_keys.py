@@ -1,13 +1,32 @@
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3
+#
+# Copyright (c) 2024 YunoHost Contributors
+#
+# This file is part of YunoHost (see https://yunohost.org)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
 
-import toml
-import os
-import re
 import glob
 import json
-import yaml
+import os
+import re
 import subprocess
 import sys
+
+import toml
+import yaml
 
 ROOT = os.path.dirname(__file__) + "/../"
 LOCALE_FOLDER = ROOT + "/locales/"
@@ -19,7 +38,6 @@ REFERENCE_FILE = LOCALE_FOLDER + "en.json"
 
 
 def find_expected_string_keys():
-
     # Try to find :
     #    m18n.n(   "foo"
     #    YunohostError("foo"
@@ -27,12 +45,15 @@ def find_expected_string_keys():
     #    # i18n: foo
     p1 = re.compile(r"m18n\.n\(\n*\s*[\"\'](\w+)[\"\']")
     p2 = re.compile(r"YunohostError\(\n*\s*[\'\"](\w+)[\'\"]")
-    p3 = re.compile(r"YunohostValidationError\(\n*\s*[\'\"](\w+)[\'\"]")
+    p3 = re.compile(
+        r"Yunohost(Validation|Authentication)Error\(\n*\s*[\'\"](\w+)[\'\"]"
+    )
     p4 = re.compile(r"# i18n: [\'\"]?(\w+)[\'\"]?")
 
     python_files = glob.glob(ROOT + "src/*.py")
     python_files.extend(glob.glob(ROOT + "src/utils/*.py"))
     python_files.extend(glob.glob(ROOT + "src/migrations/*.py"))
+    python_files.extend(glob.glob(ROOT + "src/migrations/*.py.disabled"))
     python_files.extend(glob.glob(ROOT + "src/authenticators/*.py"))
     python_files.extend(glob.glob(ROOT + "src/diagnosers/*.py"))
     python_files.append(ROOT + "bin/yunohost")
@@ -47,7 +68,7 @@ def find_expected_string_keys():
             if m.endswith("_"):
                 continue
             yield m
-        for m in p3.findall(content):
+        for _, m in p3.findall(content):
             if m.endswith("_"):
                 continue
             yield m
@@ -136,16 +157,32 @@ def find_expected_string_keys():
 
     # Domain config panel
     domain_config = toml.load(open(ROOT + "share/config_domain.toml"))
-    for panel in domain_config.values():
+    domain_settings_with_help_key = [
+        "portal_logo",
+        "portal_public_intro",
+        "portal_theme",
+        "portal_user_intro",
+        "search_engine",
+        "custom_css",
+        "dns",
+        "enable_public_apps_page",
+    ]
+    domain_section_with_no_name = ["app", "cert_", "mail", "registrar"]
+    for panel_key, panel in domain_config.items():
         if not isinstance(panel, dict):
             continue
-        for section in panel.values():
+        yield f"domain_config_{panel_key}_name"
+        for section_key, section in panel.items():
             if not isinstance(section, dict):
                 continue
+            if section_key not in domain_section_with_no_name:
+                yield f"domain_config_{section_key}_name"
             for key, values in section.items():
                 if not isinstance(values, dict):
                     continue
                 yield f"domain_config_{key}"
+                if key in domain_settings_with_help_key:
+                    yield f"domain_config_{key}_help"
 
     # Global settings
     global_config = toml.load(open(ROOT + "share/config_global.toml"))
@@ -156,19 +193,21 @@ def find_expected_string_keys():
         "smtp_relay_password",
         "smtp_relay_port",
         "smtp_relay_user",
-        "ssh_port",
         "ssowat_panel_overlay_enabled",
         "root_password",
         "root_access_explain",
         "root_password_confirm",
+        "tls_passthrough_explain",
     ]
 
-    for panel in global_config.values():
+    for panel_key, panel in global_config.items():
         if not isinstance(panel, dict):
             continue
-        for section in panel.values():
+        yield f"global_settings_setting_{panel_key}_name"
+        for section_key, section in panel.items():
             if not isinstance(section, dict):
                 continue
+            yield f"global_settings_setting_{section_key}_name"
             for key, values in section.items():
                 if not isinstance(values, dict):
                     continue
@@ -197,7 +236,6 @@ undefined_keys = sorted(undefined_keys)
 
 mode = sys.argv[1].strip("-")
 if mode == "check":
-
     # Unused keys are not too problematic, will be automatically
     # removed by the other autoreformat script,
     # but still informative to display them

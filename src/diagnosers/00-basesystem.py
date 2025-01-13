@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,32 +17,28 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import os
+
 import json
+import logging
+import os
 import subprocess
 from typing import List
 
-from moulinette.utils import log
-from moulinette.utils.process import check_output
 from moulinette.utils.filesystem import read_file, read_json, write_to_json
-from yunohost.diagnosis import Diagnoser
-from yunohost.utils.system import (
-    ynh_packages_version,
-    system_virt,
-    system_arch,
-)
+from moulinette.utils.process import check_output
 
-logger = log.getActionLogger("yunohost.diagnosis")
+from yunohost.diagnosis import Diagnoser
+from yunohost.utils.system import system_arch, system_virt, ynh_packages_version
+
+logger = logging.getLogger("yunohost.diagnosis")
 
 
 class MyDiagnoser(Diagnoser):
-
     id_ = os.path.splitext(os.path.basename(__file__))[0].split("-")[1]
     cache_duration = 600
     dependencies: List[str] = []
 
     def run(self):
-
         virt = system_virt()
         if virt.lower() == "none":
             virt = "bare-metal"
@@ -120,9 +117,11 @@ class MyDiagnoser(Diagnoser):
                 "repo": ynh_packages["yunohost"]["repo"],
             },
             status="INFO" if consistent_versions else "ERROR",
-            summary="diagnosis_basesystem_ynh_main_version"
-            if consistent_versions
-            else "diagnosis_basesystem_ynh_inconsistent_versions",
+            summary=(
+                "diagnosis_basesystem_ynh_main_version"
+                if consistent_versions
+                else "diagnosis_basesystem_ynh_inconsistent_versions"
+            ),
             details=ynh_version_details,
         )
 
@@ -192,8 +191,17 @@ class MyDiagnoser(Diagnoser):
                 summary="diagnosis_high_number_auth_failures",
             )
 
-    def bad_sury_packages(self):
+        rfkill_wifi = self.rfkill_wifi()
+        if len(rfkill_wifi) > 0:
+            yield dict(
+                meta={"test": "rfkill_wifi"},
+                status="ERROR",
+                summary="diagnosis_rfkill_wifi",
+                details=["diagnosis_rfkill_wifi_details"],
+                data={"rfkill_wifi_error": rfkill_wifi},
+            )
 
+    def bad_sury_packages(self):
         packages_to_check = ["openssl", "libssl1.1", "libssl-dev"]
         for package in packages_to_check:
             cmd = "dpkg --list | grep '^ii' | grep gbp | grep -q -w %s" % package
@@ -209,12 +217,10 @@ class MyDiagnoser(Diagnoser):
             yield (package, version_to_downgrade_to)
 
     def backports_in_sources_list(self):
-
         cmd = "grep -q -nr '^ *deb .*-backports' /etc/apt/sources.list*"
         return os.system(cmd) == 0
 
     def number_of_recent_auth_failure(self):
-
         # Those syslog facilities correspond to auth and authpriv
         # c.f. https://unix.stackexchange.com/a/401398
         # and https://wiki.archlinux.org/title/Systemd/Journal#Facility
@@ -304,3 +310,10 @@ class MyDiagnoser(Diagnoser):
         )
         write_to_json(cache_file, CVEs)
         return CVEs[0]["VULNERABLE"]
+
+    def rfkill_wifi(self):
+        if os.path.isfile("/etc/profile.d/wifi-check.sh"):
+            cmd = "bash /etc/profile.d/wifi-check.sh"
+            return check_output(cmd)
+        else:
+            return ""

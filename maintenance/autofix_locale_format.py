@@ -1,7 +1,27 @@
+#!/usr/bin/env python3
+#
+# Copyright (c) 2024 YunoHost Contributors
+#
+# This file is part of YunoHost (see https://yunohost.org)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+
+import glob
+import json
 import os
 import re
-import json
-import glob
 from collections import OrderedDict
 
 ROOT = os.path.dirname(__file__) + "/../"
@@ -32,7 +52,6 @@ def autofix_i18n_placeholders():
 
         # We iterate over all keys/string in en.json
         for key, string in reference.items():
-
             # Ignore check if there's no translation yet for this key
             if key not in this_locale:
                 continue
@@ -89,7 +108,6 @@ Please fix it manually !
 
 def autofix_orthotypography_and_standardized_words():
     def reformat(lang, transformations):
-
         locale = open(f"{LOCALE_FOLDER}{lang}.json").read()
         for pattern, replace in transformations.items():
             locale = re.compile(pattern).sub(replace, locale)
@@ -111,15 +129,16 @@ def autofix_orthotypography_and_standardized_words():
         "\u2008",
         "\u2009",
         "\u200A",
-        "\u202f",
-        "\u202F",
+        # "\u202f",
+        # "\u202F",
         "\u3000",
     ]
 
     transformations = {s: " " for s in godamn_spaces_of_hell}
     transformations.update(
         {
-            "…": "...",
+            r"\.\.\.": "…",
+            "https ://": "https://",
         }
     )
 
@@ -146,11 +165,9 @@ def autofix_orthotypography_and_standardized_words():
 
 
 def remove_stale_translated_strings():
-
     reference = json.loads(open(LOCALE_FOLDER + "en.json").read())
 
     for locale_file in TRANSLATION_FILES:
-
         print(locale_file)
         this_locale = json.loads(
             open(LOCALE_FOLDER + locale_file).read(), object_pairs_hook=OrderedDict

@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,17 +17,17 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+
+import logging
 import os
-import dns.resolver
 import re
+from subprocess import CalledProcessError
 from typing import List
 
-from subprocess import CalledProcessError
-
-from moulinette.utils import log
-from moulinette.utils.process import check_output
 from moulinette.utils.filesystem import read_yaml
+from moulinette.utils.process import check_output
 
+import dns.resolver
 from yunohost.diagnosis import Diagnoser
 from yunohost.domain import _get_maindomain, domain_list
 from yunohost.settings import settings_get
@@ -34,18 +35,16 @@ from yunohost.utils.dns import dig
 
 DEFAULT_DNS_BLACKLIST = "/usr/share/yunohost/dnsbl_list.yml"
 
-logger = log.getActionLogger("yunohost.diagnosis")
+logger = logging.getLogger("yunohost.diagnosis")
 
 
 class MyDiagnoser(Diagnoser):
-
     id_ = os.path.splitext(os.path.basename(__file__))[0].split("-")[1]
     cache_duration = 600
     dependencies: List[str] = ["ip"]
 
     def run(self):
-
-        self.ehlo_domain = _get_maindomain()
+        self.ehlo_domain = _get_maindomain().lower()
         self.mail_domains = domain_list()["domains"]
         self.ipversions, self.ips = self.get_ips_checked()
 
@@ -134,7 +133,7 @@ class MyDiagnoser(Diagnoser):
                     summary=summary,
                     details=[summary + "_details"],
                 )
-            elif r["helo"] != self.ehlo_domain:
+            elif r["helo"].lower() != self.ehlo_domain:
                 yield dict(
                     meta={"test": "mail_ehlo", "ipversion": ipversion},
                     data={"wrong_ehlo": r["helo"], "right_ehlo": self.ehlo_domain},
@@ -187,7 +186,7 @@ class MyDiagnoser(Diagnoser):
             rdns_domain = ""
             if len(value) > 0:
                 rdns_domain = value[0][:-1] if value[0].endswith(".") else value[0]
-            if rdns_domain != self.ehlo_domain:
+            if rdns_domain.lower() != self.ehlo_domain:
                 details = [
                     "diagnosis_mail_fcrdns_different_from_ehlo_domain_details"
                 ] + details
@@ -196,7 +195,7 @@ class MyDiagnoser(Diagnoser):
                     data={
                         "ip": ip,
                         "ehlo_domain": self.ehlo_domain,
-                        "rdns_domain": rdns_domain,
+                        "rdns_domain": rdns_domain.lower(),
                     },
                     status="ERROR",
                     summary="diagnosis_mail_fcrdns_different_from_ehlo_domain",
@@ -279,7 +278,7 @@ class MyDiagnoser(Diagnoser):
                 data={"error": str(e)},
                 status="ERROR",
                 summary="diagnosis_mail_queue_unavailable",
-                details="diagnosis_mail_queue_unavailable_details",
+                details=["diagnosis_mail_queue_unavailable_details"],
             )
         else:
             if pending_emails > 100:
@@ -301,13 +300,17 @@ class MyDiagnoser(Diagnoser):
         outgoing_ipversions = []
         outgoing_ips = []
         ipv4 = Diagnoser.get_cached_report("ip", {"test": "ipv4"}) or {}
-        if ipv4.get("status") == "SUCCESS":
+        if ipv4.get("status") == "SUCCESS" and settings_get(
+            "misc.network.dns_exposure"
+        ) in ["both", "ipv4"]:
             outgoing_ipversions.append(4)
             global_ipv4 = ipv4.get("data", {}).get("global", {})
             if global_ipv4:
                 outgoing_ips.append(global_ipv4)
 
-        if settings_get("email.smtp.smtp_allow_ipv6"):
+        if settings_get("email.smtp.smtp_allow_ipv6") or settings_get(
+            "misc.network.dns_exposure"
+        ) in ["both", "ipv6"]:
             ipv6 = Diagnoser.get_cached_report("ip", {"test": "ipv6"}) or {}
             if ipv6.get("status") == "SUCCESS":
                 outgoing_ipversions.append(6)

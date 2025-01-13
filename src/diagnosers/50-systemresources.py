@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,25 +17,24 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import os
-import psutil
+
 import datetime
+import os
 import re
 from typing import List
 
+import psutil
 from moulinette.utils.process import check_output
 
 from yunohost.diagnosis import Diagnoser
 
 
 class MyDiagnoser(Diagnoser):
-
     id_ = os.path.splitext(os.path.basename(__file__))[0].split("-")[1]
     cache_duration = 300
     dependencies: List[str] = []
 
     def run(self):
-
         MB = 1024**2
         GB = MB * 1024
 
@@ -189,7 +189,6 @@ class MyDiagnoser(Diagnoser):
             return []
 
         def analyzed_kern_log():
-
             cmd = 'tail -n 10000 /var/log/kern.log | grep "oom_reaper: reaped process" || true'
             out = check_output(cmd)
             lines = out.split("\n") if out else []

@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,6 +17,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+
 import os
 from typing import List
 
@@ -24,17 +26,14 @@ from yunohost.service import service_status
 
 
 class MyDiagnoser(Diagnoser):
-
     id_ = os.path.splitext(os.path.basename(__file__))[0].split("-")[1]
     cache_duration = 300
     dependencies: List[str] = []
 
     def run(self):
-
         all_result = service_status()
 
         for service, result in sorted(all_result.items()):
-
             item = dict(
                 meta={"service": service},
                 data={

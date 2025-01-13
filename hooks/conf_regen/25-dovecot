@@ -1,4 +1,22 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#
+# Copyright (c) 2024 YunoHost Contributors
+#
+# This file is part of YunoHost (see https://yunohost.org)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
 
 set -e
 
@@ -16,7 +34,7 @@ do_pre_regen() {
     cp dovecot-ldap.conf "${dovecot_dir}/dovecot-ldap.conf"
     cp dovecot.sieve "${dovecot_dir}/global_script/dovecot.sieve"
 
-    export pop3_enabled="$(yunohost settings get 'email.pop3.pop3_enabled')"
+    export pop3_enabled="$(jq -r '.pop3_enabled' <<< "$YNH_SETTINGS" | int_to_bool)"
     export main_domain=$(cat /etc/yunohost/current_host)
     export domain_list="$(yunohost domain list --features mail_in mail_out --output-as json | jq -r ".domains[]" | tr '\n' ' ')"
 
@@ -41,8 +59,11 @@ do_post_regen() {
     mkdir -p "/etc/dovecot/yunohost.d/post-ext.d"
 
     # create vmail user
-    id vmail >/dev/null 2>&1 \
-        || adduser --system --ingroup mail --uid 500 vmail --home /var/vmail --no-create-home
+    id vmail > /dev/null 2>&1 \
+        || {
+             mkdir -p /var/vmail
+                                  adduser --system --ingroup mail --uid 500 vmail --home /var/vmail --no-create-home
+        }
 
     # Delete legacy home for vmail that existed in the past but was empty, poluting /home/
     [ ! -e /home/vmail ] || rmdir --ignore-fail-on-non-empty /home/vmail
@@ -52,6 +73,8 @@ do_post_regen() {
     chmod 770 /etc/dovecot/global_script
     chown root:mail /var/mail
     chmod 1775 /var/mail
+
+    python3 -c 'from yunohost.app import regen_mail_app_user_config_for_dovecot_and_postfix as r; r(only="dovecot")'
 
     [ -z "$regen_conf_files" ] && exit 0
 

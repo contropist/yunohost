@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,22 +17,20 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+
 import os
 from typing import List
 
 from yunohost.app import app_list
-
 from yunohost.diagnosis import Diagnoser
 
 
 class MyDiagnoser(Diagnoser):
-
     id_ = os.path.splitext(os.path.basename(__file__))[0].split("-")[1]
     cache_duration = 300
     dependencies: List[str] = []
 
     def run(self):
-
         apps = app_list(full=True)["apps"]
         for app in apps:
             app["issues"] = list(self.issues(app))
@@ -44,7 +43,6 @@ class MyDiagnoser(Diagnoser):
             )
         else:
             for app in apps:
-
                 if not app["issues"]:
                     continue
 
@@ -62,16 +60,15 @@ class MyDiagnoser(Diagnoser):
                 )
 
     def issues(self, app):
-
         # Check quality level in catalog
 
         if not app.get("from_catalog") or app["from_catalog"].get("state") != "working":
-            yield ("error", "diagnosis_apps_not_in_app_catalog")
+            yield ("warning", "diagnosis_apps_not_in_app_catalog")
         elif (
             not isinstance(app["from_catalog"].get("level"), int)
             or app["from_catalog"]["level"] == 0
         ):
-            yield ("error", "diagnosis_apps_broken")
+            yield ("warning", "diagnosis_apps_broken")
         elif app["from_catalog"]["level"] <= 4:
             yield ("warning", "diagnosis_apps_bad_quality")
 

@@ -1,9 +1,27 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#
+# Copyright (c) 2024 YunoHost Contributors
+#
+# This file is part of YunoHost (see https://yunohost.org)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
 
 set -e
 
 ssl_dir="/usr/share/yunohost/ssl"
-template_dir="/usr/share/yunohost/conf/ssl/"
+template_dir="/usr/share/yunohost/conf/ssl"
 ynh_ca="/etc/yunohost/certs/yunohost.org/ca.pem"
 ynh_crt="/etc/yunohost/certs/yunohost.org/crt.pem"
 ynh_key="/etc/yunohost/certs/yunohost.org/key.pem"
@@ -23,7 +41,7 @@ regen_local_ca() {
     # (Update the serial so that it's specific to this very instance)
     # N.B. : the weird RANDFILE thing comes from:
     # https://stackoverflow.com/questions/94445/using-openssl-what-does-unable-to-write-random-state-mean
-    RANDFILE=.rnd openssl rand -hex 19 >serial
+    RANDFILE=.rnd openssl rand -hex 19 > serial
     rm -f index.txt
     touch index.txt
     cp ${template_dir}/openssl.cnf openssl.ca.cnf
@@ -51,7 +69,7 @@ regen_local_ca() {
 do_init_regen() {
 
     LOGFILE=/tmp/yunohost-ssl-init
-    echo "" >$LOGFILE
+    echo "" > $LOGFILE
     chown root:root $LOGFILE
     chmod 640 $LOGFILE
 
@@ -61,24 +79,24 @@ do_init_regen() {
 
     # create default certificates
     if [[ ! -f "$ynh_ca" ]]; then
-        regen_local_ca yunohost.org >>$LOGFILE
+        regen_local_ca yunohost.org >> $LOGFILE
     fi
 
     if [[ ! -f "$ynh_crt" ]]; then
-        echo -e "\n# Creating initial key and certificate \n" >>$LOGFILE
+        echo -e "\n# Creating initial key and certificate \n" >> $LOGFILE
 
         openssl req -new \
             -config "${ssl_dir}/openssl.cnf" \
             -out "${ssl_dir}/certs/yunohost_csr.pem" \
             -keyout "${ssl_dir}/certs/yunohost_key.pem" \
-            -nodes -batch &>>$LOGFILE
+            -nodes -batch &>> $LOGFILE
 
         openssl ca \
             -config "${ssl_dir}/openssl.cnf" \
             -days 730 \
             -in "${ssl_dir}/certs/yunohost_csr.pem" \
             -out "${ssl_dir}/certs/yunohost_crt.pem" \
-            -batch &>>$LOGFILE
+            -batch &>> $LOGFILE
 
         chmod 640 "${ssl_dir}/certs/yunohost_key.pem"
         chmod 640 "${ssl_dir}/certs/yunohost_crt.pem"
@@ -104,10 +122,9 @@ do_post_regen() {
 
     current_local_ca_domain=$(openssl x509 -in $ynh_ca -text | tr ',' '\n' | grep Issuer | awk '{print $4}')
     main_domain=$(cat /etc/yunohost/current_host)
-   
+
     # Automigrate legacy folder
-    if [ -e /usr/share/yunohost/yunohost-config/ssl/yunoCA ]
-    then
+    if [ -e /usr/share/yunohost/yunohost-config/ssl/yunoCA ]; then
         mv /usr/share/yunohost/yunohost-config/ssl/yunoCA/* ${ssl_dir}
         rm -rf /usr/share/yunohost/yunohost-config
         # Overwrite openssl.cnf because it may still contain references to the old yunoCA dir
@@ -120,7 +137,7 @@ do_post_regen() {
     chown root:root ${ssl_dir}
     chmod 750 ${ssl_dir}
     chmod -R o-rwx ${ssl_dir}
-    chmod o+x ${ssl_dir}/certs 
+    chmod o+x ${ssl_dir}/certs
     chmod o+r ${ssl_dir}/certs/yunohost_crt.pem
 
     if [[ "$current_local_ca_domain" != "$main_domain" ]]; then

@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,12 +17,14 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import dns.resolver
+
 from typing import List
 
 from moulinette.utils.filesystem import read_file
 
-SPECIAL_USE_TLDS = ["local", "localhost", "onion", "test"]
+import dns.resolver
+
+SPECIAL_USE_TLDS = ["home.arpa", "internal", "local", "localhost", "onion", "test"]
 
 YNH_DYNDNS_DOMAINS = ["nohost.me", "noho.st", "ynh.fr"]
 
@@ -31,19 +34,16 @@ external_resolvers_: List[str] = []
 
 
 def is_yunohost_dyndns_domain(domain):
-
     return any(
         domain.endswith(f".{dyndns_domain}") for dyndns_domain in YNH_DYNDNS_DOMAINS
     )
 
 
 def is_special_use_tld(domain):
-
     return any(domain.endswith(f".{tld}") for tld in SPECIAL_USE_TLDS)
 
 
 def external_resolvers():
-
     global external_resolvers_
 
     if not external_resolvers_:

@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,10 +17,11 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import sys
+
 import os
 import string
 import subprocess
+
 import yaml
 
 SMALL_PWD_LIST = [
@@ -58,7 +60,6 @@ def assert_password_is_compatible(password):
     """
 
     if len(password) >= 127:
-
         # Note that those imports are made here and can't be put
         # on top (at least not the moulinette ones)
         # because the moulinette needs to be correctly initialized
@@ -69,8 +70,16 @@ def assert_password_is_compatible(password):
 
 
 def assert_password_is_strong_enough(profile, password):
-
     PasswordValidator(profile).validate(password)
+
+
+def _hash_user_password(password):
+    import passlib.hash
+
+    # passlib will returns something like:
+    # $6$rounds=656000$AwCIMolbTAyQhtev$46UvYfVgs.k0Bt6fLTekBHyCcCFkix/NNfgAWiICX.9YUPVYZ3PsIAwY99yP5/tXhg2sYBaAhKj6W3kuYWaR3.
+    # cf https://passlib.readthedocs.io/en/stable/modular_crypt_format.html#modular-crypt-format
+    return "{CRYPT}" + passlib.hash.sha512_crypt.hash(password)
 
 
 class PasswordValidator:
@@ -197,7 +206,6 @@ class PasswordValidator:
         return strength_level
 
     def is_in_most_used_list(self, password):
-
         # Decompress file if compressed
         if os.path.exists("%s.gz" % MOST_USED_PASSWORDS):
             os.system("gzip -fd %s.gz" % MOST_USED_PASSWORDS)
@@ -209,19 +217,3 @@ class PasswordValidator:
         p = subprocess.Popen(command.split(), stdin=subprocess.PIPE)
         p.communicate(input=password.encode("utf-8"))
         return not bool(p.returncode)
-
-
-# This file is also meant to be used as an executable by
-# SSOwat to validate password from the portal when an user
-# change its password.
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        import getpass
-
-        pwd = getpass.getpass("")
-        # print("usage: password.py PASSWORD")
-    else:
-        pwd = sys.argv[1]
-    status, msg = PasswordValidator("user").validation_summary(pwd)
-    print(msg)
-    sys.exit(0)

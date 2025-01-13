@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,40 +17,39 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+
+import logging
 import os
 import re
-from typing import List
 from datetime import datetime, timedelta
+from typing import List
+
+from moulinette.utils.process import check_output
 from publicsuffix2 import PublicSuffixList
 
-from moulinette.utils import log
-from moulinette.utils.process import check_output
-
-from yunohost.utils.dns import (
-    dig,
-    YNH_DYNDNS_DOMAINS,
-    is_yunohost_dyndns_domain,
-    is_special_use_tld,
-)
 from yunohost.diagnosis import Diagnoser
-from yunohost.domain import domain_list, _get_maindomain
 from yunohost.dns import (
     _build_dns_conf,
     _get_dns_zone_for_domain,
     _get_relative_name_for_dns_zone,
 )
+from yunohost.domain import _get_maindomain, domain_list
+from yunohost.utils.dns import (
+    YNH_DYNDNS_DOMAINS,
+    dig,
+    is_special_use_tld,
+    is_yunohost_dyndns_domain,
+)
 
-logger = log.getActionLogger("yunohost.diagnosis")
+logger = logging.getLogger("yunohost.diagnosis")
 
 
 class MyDiagnoser(Diagnoser):
-
     id_ = os.path.splitext(os.path.basename(__file__))[0].split("-")[1]
     cache_duration = 600
     dependencies: List[str] = ["ip"]
 
     def run(self):
-
         main_domain = _get_maindomain()
 
         major_domains = domain_list(exclude_subdomains=True)["domains"]
@@ -77,7 +77,6 @@ class MyDiagnoser(Diagnoser):
             yield report
 
     def check_domain(self, domain, is_main_domain):
-
         if is_special_use_tld(domain):
             yield dict(
                 meta={"domain": domain},
@@ -94,16 +93,14 @@ class MyDiagnoser(Diagnoser):
             domain, include_empty_AAAA_if_no_ipv6=True
         )
 
-        categories = ["basic", "mail", "xmpp", "extra"]
+        categories = ["basic", "mail", "extra"]
 
         for category in categories:
-
             records = expected_configuration[category]
             discrepancies = []
             results = {}
 
             for r in records:
-
                 id_ = r["type"] + ":" + r["name"]
                 fqdn = r["name"] + "." + base_dns_zone if r["name"] != "@" else domain
 
@@ -182,12 +179,15 @@ class MyDiagnoser(Diagnoser):
             yield output
 
     def get_current_record(self, fqdn, type_):
-
         success, answers = dig(fqdn, type_, resolvers="force_external")
 
         if success != "ok":
             return None
         else:
+            if type_ == "TXT" and isinstance(answers, list):
+                for part in answers:
+                    if part.startswith('"v=spf1'):
+                        return part
             return answers[0] if len(answers) == 1 else answers
 
     def current_record_match_expected(self, r):
@@ -217,6 +217,13 @@ class MyDiagnoser(Diagnoser):
                     for part in current
                     if not part.startswith("ip4:") and not part.startswith("ip6:")
                 }
+            if "v=DMARC1" in r["value"]:
+                for param in current:
+                    if "=" not in param:
+                        return False
+                    key, value = param.split("=", 1)
+                    if key == "p":
+                        return value in ["none", "quarantine", "reject"]
             return expected == current
         elif r["type"] == "MX":
             # For MX, we want to ignore the priority
@@ -288,9 +295,9 @@ class MyDiagnoser(Diagnoser):
                 yield dict(
                     meta=meta,
                     data={},
-                    status=alert_type.upper()
-                    if alert_type != "not_found"
-                    else "WARNING",
+                    status=(
+                        alert_type.upper() if alert_type != "not_found" else "WARNING"
+                    ),
                     summary="diagnosis_domain_expiration_" + alert_type,
                     details=details[alert_type],
                 )

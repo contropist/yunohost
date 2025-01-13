@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,12 +17,12 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from moulinette.core import MoulinetteError, MoulinetteAuthenticationError
+
 from moulinette import m18n
+from moulinette.core import MoulinetteAuthenticationError, MoulinetteError
 
 
 class YunohostError(MoulinetteError):
-
     http_code = 500
 
     """
@@ -43,7 +44,6 @@ class YunohostError(MoulinetteError):
         super(YunohostError, self).__init__(msg, raw_msg=True)
 
     def content(self):
-
         if not self.log_ref:
             return super().content()
         else:
@@ -51,14 +51,11 @@ class YunohostError(MoulinetteError):
 
 
 class YunohostValidationError(YunohostError):
-
     http_code = 400
 
     def content(self):
-
         return {"error": self.strerror, "error_key": self.key, **self.kwargs}
 
 
 class YunohostAuthenticationError(MoulinetteAuthenticationError):
-
     pass

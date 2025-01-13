@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,19 +17,21 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import re
+
 import copy
 import grp
 import random
+import re
+from logging import getLogger
 
 from moulinette import m18n
-from moulinette.utils.log import getActionLogger
-from yunohost.utils.error import YunohostError, YunohostValidationError
+
 from yunohost.log import is_unit_operation
+from yunohost.utils.error import YunohostError, YunohostValidationError
 
-logger = getActionLogger("yunohost.user")
+logger = getLogger("yunohost.user")
 
-SYSTEM_PERMS = ["mail", "xmpp", "sftp", "ssh"]
+SYSTEM_PERMS = ["mail", "sftp", "ssh"]
 
 #
 #
@@ -45,7 +48,7 @@ def user_permission_list(
     """
 
     # Fetch relevant informations
-    from yunohost.app import app_setting, _installed_apps
+    from yunohost.app import _installed_apps, app_setting
     from yunohost.utils.ldap import _get_ldap_interface, _ldap_path_extract
 
     ldap = _get_ldap_interface()
@@ -79,7 +82,6 @@ def user_permission_list(
 
     permissions = {}
     for infos in permissions_infos:
-
         name = infos["cn"][0]
         app = name.split(".")[0]
 
@@ -171,7 +173,7 @@ def user_permission_update(
 
     existing_permission = user_permission_info(permission)
 
-    # Refuse to add "visitors" to mail, xmpp ... they require an account to make sense.
+    # Refuse to add "visitors" to mail ... they require an account to make sense.
     if add and "visitors" in add and permission.split(".")[0] in SYSTEM_PERMS:
         raise YunohostValidationError(
             "permission_require_account", permission=permission
@@ -388,8 +390,8 @@ def permission_create(
        re:domain.tld/app/api/[A-Z]*$ -> domain.tld/app/api/[A-Z]*$
     """
 
-    from yunohost.utils.ldap import _get_ldap_interface
     from yunohost.user import user_group_list
+    from yunohost.utils.ldap import _get_ldap_interface
 
     ldap = _get_ldap_interface()
 
@@ -644,6 +646,7 @@ def permission_sync_to_user():
     user<->group link and the group<->permission link
     """
     import os
+
     from yunohost.app import app_ssowatconf
     from yunohost.user import user_group_list
     from yunohost.utils.ldap import _get_ldap_interface
@@ -654,7 +657,6 @@ def permission_sync_to_user():
     permissions = user_permission_list(full=True)["permissions"]
 
     for permission_name, permission_infos in permissions.items():
-
         # These are the users currently allowed because there's an 'inheritPermission' object corresponding to it
         currently_allowed_users = set(permission_infos["corresponding_users"])
 
@@ -740,7 +742,6 @@ def _update_ldap_group_permission(
         update["isProtected"] = [str(protected).upper()]
 
     if show_tile is not None:
-
         if show_tile is True:
             if not existing_permission["url"]:
                 logger.warning(
@@ -817,10 +818,12 @@ def _update_ldap_group_permission(
 def _get_absolute_url(url, base_path):
     #
     # For example transform:
-    #    (/api, domain.tld/nextcloud)     into  domain.tld/nextcloud/api
-    #    (/api, domain.tld/nextcloud/)    into  domain.tld/nextcloud/api
-    #    (re:/foo.*, domain.tld/app)      into  re:domain\.tld/app/foo.*
-    #    (domain.tld/bar, domain.tld/app) into  domain.tld/bar
+    #    (/,    domain.tld/)                  into  domain.tld (no trailing /)
+    #    (/api, domain.tld/nextcloud)         into  domain.tld/nextcloud/api
+    #    (/api, domain.tld/nextcloud/)        into  domain.tld/nextcloud/api
+    #    (re:/foo.*, domain.tld/app)          into  re:domain\.tld/app/foo.*
+    #    (domain.tld/bar, domain.tld/app)     into  domain.tld/bar
+    #    (some.other.domain/, domain.tld/app) into  some.other.domain (no trailing /)
     #
     base_path = base_path.rstrip("/")
     if url is None:
@@ -830,7 +833,7 @@ def _get_absolute_url(url, base_path):
     if url.startswith("re:/"):
         return "re:" + base_path.replace(".", "\\.") + url[3:]
     else:
-        return url
+        return url.rstrip("/")
 
 
 def _validate_and_sanitize_permission_url(url, app_base_path, app):
@@ -856,8 +859,8 @@ def _validate_and_sanitize_permission_url(url, app_base_path, app):
         re:^/api/.*|/scripts/api.js$
     """
 
-    from yunohost.domain import _assert_domain_exists
     from yunohost.app import _assert_no_conflicting_apps
+    from yunohost.domain import _assert_domain_exists
 
     #
     # Regexes
@@ -876,7 +879,6 @@ def _validate_and_sanitize_permission_url(url, app_base_path, app):
             raise YunohostValidationError("invalid_regex", regex=regex)
 
     if url.startswith("re:"):
-
         # regex without domain
         # we check for the first char after 're:'
         if url[3] in ["/", "^", "\\"]:

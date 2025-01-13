@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,33 +17,32 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+
 import os
-import sys
 import shutil
 import subprocess
-import glob
-
+import sys
 from datetime import datetime
+from glob import glob
+from logging import getLogger
 
 from moulinette import m18n
-from moulinette.utils.log import getActionLogger
-from moulinette.utils.filesystem import read_file, chown, chmod
+from moulinette.utils.filesystem import chmod, chown, read_file
 from moulinette.utils.process import check_output
 
-from yunohost.vendor.acme_tiny.acme_tiny import get_crt as sign_certificate
+from yunohost.diagnosis import Diagnoser
+from yunohost.log import OperationLogger
+from yunohost.regenconf import regen_conf
+from yunohost.service import _run_service_command
 from yunohost.utils.error import YunohostError, YunohostValidationError
 from yunohost.utils.network import get_public_ip
+from yunohost.vendor.acme_tiny.acme_tiny import get_crt as sign_certificate
 
-from yunohost.diagnosis import Diagnoser
-from yunohost.service import _run_service_command
-from yunohost.regenconf import regen_conf
-from yunohost.log import OperationLogger
-
-logger = getActionLogger("yunohost.certmanager")
+logger = getLogger("yunohost.certmanager")
 
 CERT_FOLDER = "/etc/yunohost/certs/"
-TMP_FOLDER = "/tmp/acme-challenge-private/"
-WEBROOT_FOLDER = "/tmp/acme-challenge-public/"
+TMP_FOLDER = "/var/www/.well-known/acme-challenge-private/"
+WEBROOT_FOLDER = "/var/www/.well-known/acme-challenge-public/"
 
 SELF_CA_FILE = "/etc/ssl/certs/ca-yunohost_crt.pem"
 ACCOUNT_KEY_FILE = "/etc/yunohost/letsencrypt_account.pem"
@@ -70,7 +70,11 @@ def certificate_status(domains, full=False):
         full        -- Display more info about the certificates
     """
 
-    from yunohost.domain import domain_list, _assert_domain_exists
+    from yunohost.domain import (
+        _assert_domain_exists,
+        _get_parent_domain_of,
+        domain_list,
+    )
 
     # If no domains given, consider all yunohost domains
     if domains == []:
@@ -99,6 +103,16 @@ def certificate_status(domains, full=False):
                 else:
                     status["ACME_eligible"] = False
 
+            # Check if a wildcard is setup for the ipv4/ipv6 A/AAAA records on the topest domain
+            parent_domain = _get_parent_domain_of(domain, return_self=True, topest=True)
+            dns_extra = Diagnoser.get_cached_report(
+                "dnsrecords", item={"domain": parent_domain, "category": "extra"}
+            ).get("data", {})
+            has_wildcards = [
+                v == "OK" for k, v in dns_extra.items() if k.startswith("A")
+            ]
+            status["has_wildcards"] = len(has_wildcards) > 0 and all(has_wildcards)
+
         del status["domain"]
         certificates[domain] = status
 
@@ -124,10 +138,8 @@ def certificate_install(domain_list, force=False, no_checks=False, self_signed=F
 
 
 def _certificate_install_selfsigned(domain_list, force=False):
-
     failed_cert_install = []
     for domain in domain_list:
-
         operation_logger = OperationLogger(
             "selfsigned_cert_install", [("domain", domain)], args={"force": force}
         )
@@ -229,7 +241,7 @@ def _certificate_install_selfsigned(domain_list, force=False):
 
 
 def _certificate_install_letsencrypt(domains, force=False, no_checks=False):
-    from yunohost.domain import domain_list, _assert_domain_exists
+    from yunohost.domain import _assert_domain_exists, domain_list
 
     if not os.path.exists(ACCOUNT_KEY_FILE):
         _generate_account_key()
@@ -238,7 +250,6 @@ def _certificate_install_letsencrypt(domains, force=False, no_checks=False):
     # certificates
     if domains == []:
         for domain in domain_list()["domains"]:
-
             status = _get_status(domain)
             if status["CA_type"] != "selfsigned":
                 continue
@@ -260,7 +271,6 @@ def _certificate_install_letsencrypt(domains, force=False, no_checks=False):
     # Actual install steps
     failed_cert_install = []
     for domain in domains:
-
         if not no_checks:
             try:
                 _check_domain_is_ready_for_ACME(domain)
@@ -311,13 +321,12 @@ def certificate_renew(domains, force=False, no_checks=False, email=False):
         email      -- Emails root if some renewing failed
     """
 
-    from yunohost.domain import domain_list, _assert_domain_exists
+    from yunohost.domain import _assert_domain_exists, domain_list
 
     # If no domains given, consider all yunohost domains with Let's Encrypt
     # certificates
     if domains == []:
         for domain in domain_list()["domains"]:
-
             # Does it have a Let's Encrypt cert?
             status = _get_status(domain)
             if status["CA_type"] != "letsencrypt":
@@ -342,7 +351,6 @@ def certificate_renew(domains, force=False, no_checks=False, email=False):
     # Else, validate the domain list given
     else:
         for domain in domains:
-
             # Is it in Yunohost domain list?
             _assert_domain_exists(domain)
 
@@ -369,7 +377,6 @@ def certificate_renew(domains, force=False, no_checks=False, email=False):
     # Actual renew steps
     failed_cert_install = []
     for domain in domains:
-
         if not no_checks:
             try:
                 _check_domain_is_ready_for_ACME(domain)
@@ -468,13 +475,11 @@ investigate :
 
 
 def _check_acme_challenge_configuration(domain):
-
     domain_conf = f"/etc/nginx/conf.d/{domain}.conf"
     return "include /etc/nginx/conf.d/acme-challenge.conf.inc" in read_file(domain_conf)
 
 
 def _fetch_and_enable_new_certificate(domain, no_checks=False):
-
     if not os.path.exists(ACCOUNT_KEY_FILE):
         _generate_account_key()
 
@@ -567,48 +572,46 @@ def _fetch_and_enable_new_certificate(domain, no_checks=False):
 def _prepare_certificate_signing_request(domain, key_file, output_folder):
     from OpenSSL import crypto  # lazy loading this module for performance reasons
 
+    from yunohost.hook import hook_callback
+
     # Init a request
     csr = crypto.X509Req()
 
     # Set the domain
     csr.get_subject().CN = domain
 
-    from yunohost.domain import domain_config_get
+    sanlist = []
+    hook_results = hook_callback("cert_alternate_names", env={"domain": domain})
+    for hook_name, results in hook_results.items():
+        #
+        # There can be multiple results per hook name, so results look like
+        # {'/some/path/to/hook1':
+        #       { 'state': 'succeed',
+        #         'stdreturn': ["foo", "bar"]
+        #       },
+        #  '/some/path/to/hook2':
+        #       { ... },
+        #  [...]
+        #
+        # Loop over the sub-results
+        for result in results.values():
+            if result.get("stdreturn"):
+                sanlist += result["stdreturn"]
 
-    # If XMPP is enabled for this domain, add xmpp-upload and muc subdomains
-    # in subject alternate names
-    if domain_config_get(domain, key="feature.xmpp.xmpp") == 1:
-        subdomain = "xmpp-upload." + domain
-        xmpp_records = (
-            Diagnoser.get_cached_report(
-                "dnsrecords", item={"domain": domain, "category": "xmpp"}
-            ).get("data")
-            or {}
-        )
-        sanlist = []
-        for sub in ("xmpp-upload", "muc"):
-            subdomain = sub + "." + domain
-            if xmpp_records.get("CNAME:" + sub) == "OK":
-                sanlist.append(("DNS:" + subdomain))
-            else:
-                logger.warning(
-                    m18n.n(
-                        "certmanager_warning_subdomain_dns_record",
-                        subdomain=subdomain,
-                        domain=domain,
-                    )
+    if sanlist:
+        subsanlist = [f"DNS:{sub}.{domain}" for sub in sanlist if "." not in sub]
+        # This is meant for situation such as cryptpad where we need to be able to have a cert for sandbox-domain.tld (with a dash, not just sandbox.domain.tld)
+        domainsanlist = [f"DNS:{domain}" for domain in sanlist if "." in domain]
+        sanlist = ", ".join(subsanlist + domainsanlist)
+        csr.add_extensions(
+            [
+                crypto.X509Extension(
+                    b"subjectAltName",
+                    False,
+                    sanlist.encode("utf-8"),
                 )
-
-        if sanlist:
-            csr.add_extensions(
-                [
-                    crypto.X509Extension(
-                        b"subjectAltName",
-                        False,
-                        (", ".join(sanlist)).encode("utf-8"),
-                    )
-                ]
-            )
+            ]
+        )
 
     # Set the key
     with open(key_file, "rt") as f:
@@ -628,7 +631,6 @@ def _prepare_certificate_signing_request(domain, key_file, output_folder):
 
 
 def _get_status(domain):
-
     cert_file = os.path.join(CERT_FOLDER, domain, "crt.pem")
 
     if not os.path.isfile(cert_file):
@@ -743,15 +745,6 @@ def _enable_certificate(domain, new_cert_folder):
 
     logger.debug("Restarting services...")
 
-    for service in ("dovecot", "metronome"):
-        # Ugly trick to not restart metronome if it's not installed
-        if (
-            service == "metronome"
-            and os.system("dpkg --list | grep -q 'ii *metronome'") != 0
-        ):
-            continue
-        _run_service_command("restart", service)
-
     if os.path.isfile("/etc/yunohost/installed"):
         # regen nginx conf to be sure it integrates OCSP Stapling
         # (We don't do this yet if postinstall is not finished yet)
@@ -759,6 +752,7 @@ def _enable_certificate(domain, new_cert_folder):
         regen_conf(names=["nginx", "postfix"])
 
     _run_service_command("reload", "nginx")
+    _run_service_command("restart", "dovecot")
 
     from yunohost.hook import hook_callback
 
@@ -777,9 +771,8 @@ def _backup_current_cert(domain):
 
 
 def _check_domain_is_ready_for_ACME(domain):
-
-    from yunohost.domain import _get_parent_domain_of
     from yunohost.dns import _get_dns_zone_for_domain
+    from yunohost.domain import _get_parent_domain_of
     from yunohost.utils.dns import is_yunohost_dyndns_domain
 
     httpreachable = (
@@ -789,7 +782,7 @@ def _check_domain_is_ready_for_ACME(domain):
         or {}
     )
 
-    parent_domain = _get_parent_domain_of(domain, return_self=True)
+    parent_domain = _get_parent_domain_of(domain, return_self=True, topest=True)
 
     dnsrecords = (
         Diagnoser.get_cached_report(
@@ -864,9 +857,8 @@ def _regen_dnsmasq_if_needed():
     do_regen = False
 
     # For all domain files in DNSmasq conf...
-    domainsconf = glob.glob("/etc/dnsmasq.d/*.*")
+    domainsconf = glob("/etc/dnsmasq.d/*.*")
     for domainconf in domainsconf:
-
         # Look for the IP, it's in the lines with this format :
         # host-record=the.domain.tld,11.22.33.44
         for line in open(domainconf).readlines():

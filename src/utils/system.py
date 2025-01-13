@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,20 +17,47 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import re
-import os
-import logging
 
+import logging
+import os
+import re
+
+from moulinette import Moulinette
 from moulinette.utils.process import check_output
+
 from yunohost.utils.error import YunohostError
 
 logger = logging.getLogger("yunohost.utils.packages")
 
-YUNOHOST_PACKAGES = ["yunohost", "yunohost-admin", "moulinette", "ssowat"]
+YUNOHOST_PACKAGES = [
+    "yunohost",
+    "yunohost-admin",
+    "yunohost-portal",
+    "moulinette",
+    "ssowat",
+]
+
+
+def debian_version():
+    if debian_version.cache is None:
+        debian_version.cache = check_output(
+            'grep "^VERSION_CODENAME=" /etc/os-release 2>/dev/null | cut -d= -f2'
+        )
+    return debian_version.cache
+
+
+def debian_version_id():
+    if debian_version_id.cache is None:
+        debian_version_id.cache = check_output(
+            'grep "^VERSION_ID=" /etc/os-release 2>/dev/null | cut -d= -f2'
+        ).strip('"')
+    return debian_version_id.cache
 
 
 def system_arch():
-    return check_output("dpkg --print-architecture")
+    if system_arch.cache is None:
+        system_arch.cache = check_output("dpkg --print-architecture 2>/dev/null")
+    return system_arch.cache
 
 
 def system_virt():
@@ -40,7 +68,15 @@ def system_virt():
     # Detect virt technology (if not bare metal) and arch
     # Gotta have this "|| true" because it systemd-detect-virt return 'none'
     # with an error code on bare metal ~.~
-    return check_output("systemd-detect-virt || true")
+    if system_virt.cache is None:
+        system_virt.cache = check_output("systemd-detect-virt 2>/dev/null || true")
+    return system_virt.cache
+
+
+debian_version.cache = None  # type: ignore[attr-defined]
+debian_version_id.cache = None  # type: ignore[attr-defined]
+system_arch.cache = None  # type: ignore[attr-defined]
+system_virt.cache = None  # type: ignore[attr-defined]
 
 
 def free_space_in_directory(dirpath):
@@ -49,7 +85,6 @@ def free_space_in_directory(dirpath):
 
 
 def space_used_by_directory(dirpath, follow_symlinks=True):
-
     if not follow_symlinks:
         du_output = check_output(["du", "-sb", dirpath], shell=False)
         return int(du_output.split()[0])
@@ -61,7 +96,6 @@ def space_used_by_directory(dirpath, follow_symlinks=True):
 
 
 def human_to_binary(size: str) -> int:
-
     symbols = ("K", "M", "G", "T", "P", "E", "Z", "Y")
     factor = {}
     for i, s in enumerate(symbols):
@@ -99,14 +133,12 @@ def binary_to_human(n: int) -> str:
 
 
 def ram_available():
-
     import psutil
 
     return (psutil.virtual_memory().available, psutil.swap_memory().free)
 
 
 def get_ynh_package_version(package):
-
     # Returns the installed version and release version ('stable' or 'testing'
     # or 'unstable')
 
@@ -137,7 +169,7 @@ def ynh_packages_version(*args, **kwargs):
 
 
 def dpkg_is_broken():
-    if check_output("dpkg --audit") != "":
+    if check_output("dpkg --audit", cwd="/tmp/") != "":
         return True
     # If dpkg is broken, /var/lib/dpkg/updates
     # will contains files like 0001, 0002, ...
@@ -152,7 +184,6 @@ def dpkg_lock_available():
 
 
 def _list_upgradable_apt_packages():
-
     # List upgradable packages
     # LC_ALL=C is here to make sure the results are in english
     upgradable_raw = check_output("LC_ALL=C apt list --upgradable")
@@ -162,7 +193,6 @@ def _list_upgradable_apt_packages():
         line.strip() for line in upgradable_raw.split("\n") if line.strip()
     ]
     for line in upgradable_raw:
-
         # Remove stupid warning and verbose messages >.>
         if "apt does not have a stable CLI interface" in line or "Listing..." in line:
             continue
@@ -182,7 +212,6 @@ def _list_upgradable_apt_packages():
 
 
 def _dump_sources_list():
-
     from glob import glob
 
     filenames = glob("/etc/apt/sources.list") + glob("/etc/apt/sources.list.d/*")
@@ -192,3 +221,132 @@ def _dump_sources_list():
                 if line.startswith("#") or not line.strip():
                     continue
                 yield filename.replace("/etc/apt/", "") + ":" + line.strip()
+
+
+def aptitude_with_progress_bar(cmd):
+
+    from moulinette.utils.process import call_async_output
+
+    msg_to_verb = {
+        "Preparing for removal": "Removing",
+        "Preparing to configure": "Installing",
+        "Removing": "Removing",
+        "Unpacking": "Installing",
+        "Configuring": "Installing",
+        "Installing": "Installing",
+        "Installed": "Installing",
+        "Preparing": "Installing",
+        "Done": "Done",
+        "Failed?": "Failed?",
+    }
+
+    disable_progress_bar = False
+    if cmd.startswith("update"):
+        # the status-fd does stupid stuff for 'aptitude update', percentage is always zero except last iteration
+        disable_progress_bar = True
+
+    def log_apt_status_to_progress_bar(data):
+
+        if disable_progress_bar:
+            return
+
+        t, package, percent, msg = data.split(":", 3)
+
+        # We only display the stuff related to download once
+        if t == "dlstatus":
+            if log_apt_status_to_progress_bar.download_message_displayed is False:
+                logger.info("Downloading...")
+                log_apt_status_to_progress_bar.download_message_displayed = True
+            return
+
+        if package == "dpkg-exec":
+            return
+        if (
+            package
+            and log_apt_status_to_progress_bar.previous_package
+            and package == log_apt_status_to_progress_bar.previous_package
+        ):
+            return
+
+        try:
+            percent = round(float(percent), 1)
+        except Exception:
+            return
+
+        verb = "Processing"
+        for m, v in msg_to_verb.items():
+            if msg.startswith(m):
+                verb = v
+
+        log_apt_status_to_progress_bar.previous_package = package
+
+        width = 20
+        done = "#" * int(width * percent / 100)
+        remain = "." * (width - len(done))
+        logger.info(f"[{done}{remain}] > {percent}% {verb} {package}\r")
+
+    log_apt_status_to_progress_bar.previous_package = None
+    log_apt_status_to_progress_bar.download_message_displayed = False
+
+    def strip_boring_dpkg_reading_database(s):
+        return re.sub(
+            r"(\(Reading database ... \d*%?|files and directories currently installed.\))",
+            "",
+            s,
+        )
+
+    callbacks = (
+        lambda l: logger.debug(strip_boring_dpkg_reading_database(l).rstrip() + "\r"),
+        lambda l: logger.warning(
+            l.rstrip() + "\r"
+        ),  # ... aptitude has no stderr ? :|  if _apt_log_line_is_relevant(l.rstrip()) else logger.debug(l.rstrip() + "\r"),
+        lambda l: log_apt_status_to_progress_bar(l.rstrip()),
+    )
+
+    original_cmd = cmd
+    cmd = f'LC_ALL=C DEBIAN_FRONTEND=noninteractive APT_LISTCHANGES_FRONTEND=none aptitude {cmd} --quiet=2 -o=Dpkg::Use-Pty=0 -o "APT::Status-Fd=$YNH_STDINFO"'
+
+    # If upgrading yunohost from the API, delay the Yunohost-api restart
+    # (this should be the last time we need it before bookworm, because on bookworm, yunohost-admin cookies will be persistent upon api restart)
+    if " yunohost " in cmd and Moulinette.interface.type == "api":
+        cmd = "YUNOHOST_API_RESTART_WILL_BE_HANDLED_BY_YUNOHOST=yes " + cmd
+
+    logger.debug(f"Running: {cmd}")
+
+    read, write = os.pipe()
+    os.write(write, b"y\ny\ny")
+    os.close(write)
+    ret = call_async_output(cmd, callbacks, shell=True, stdin=read)
+
+    if log_apt_status_to_progress_bar.previous_package is not None and ret == 0:
+        log_apt_status_to_progress_bar("done::100:Done")
+    elif ret != 0:
+        raise YunohostError(
+            f"Failed to run command 'aptitude {original_cmd}'", raw_msg=True
+        )
+
+
+def _apt_log_line_is_relevant(line):
+    irrelevants = [
+        "service sudo-ldap already provided",
+        "Reading database ...",
+        "Preparing to unpack",
+        "Selecting previously unselected package",
+        "Created symlink /etc/systemd",
+        "Replacing config file",
+        "Creating config file",
+        "Installing new version of config file",
+        "Installing new config file as you requested",
+        ", does not exist on system.",
+        "unable to delete old directory",
+        "update-alternatives:",
+        "Configuration file '/etc",
+        "==> Modified (by you or by a script) since installation.",
+        "==> Package distributor has shipped an updated version.",
+        "==> Keeping old config file as default.",
+        "is a disabled or a static unit",
+        " update-rc.d: warning: start and stop actions are no longer supported; falling back to defaults",
+        "insserv: warning: current stop runlevel",
+        "insserv: warning: current start runlevel",
+    ]
+    return line.rstrip() and all(i not in line.rstrip() for i in irrelevants)

@@ -1,23 +1,43 @@
+#!/usr/bin/env python3
+#
+# Copyright (c) 2024 YunoHost Contributors
+#
+# This file is part of YunoHost (see https://yunohost.org)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+
 import pytest
 
-from .conftest import message, raiseYunohostError
-
-from yunohost.user import (
-    user_list,
-    user_info,
-    user_create,
-    user_delete,
-    user_update,
-    user_import,
-    user_export,
-    FIELDS_FOR_IMPORT,
-    user_group_list,
-    user_group_create,
-    user_group_delete,
-    user_group_update,
-)
 from yunohost.domain import _get_maindomain
 from yunohost.tests.test_permission import check_LDAP_db_integrity
+from yunohost.user import (
+    FIELDS_FOR_IMPORT,
+    user_create,
+    user_delete,
+    user_export,
+    user_group_create,
+    user_group_delete,
+    user_group_list,
+    user_group_update,
+    user_import,
+    user_info,
+    user_list,
+    user_update,
+)
+
+from .conftest import message, raiseYunohostError
 
 # Get main domain
 maindomain = ""
@@ -91,9 +111,8 @@ def test_list_groups():
 #
 
 
-def test_create_user(mocker):
-
-    with message(mocker, "user_created"):
+def test_create_user():
+    with message("user_created"):
         user_create("albert", maindomain, "test123Ynh", fullname="Albert Good")
 
     group_res = user_group_list()["groups"]
@@ -103,9 +122,8 @@ def test_create_user(mocker):
     assert "albert" in group_res["all_users"]["members"]
 
 
-def test_del_user(mocker):
-
-    with message(mocker, "user_deleted"):
+def test_del_user():
+    with message("user_deleted"):
         user_delete("alice")
 
     group_res = user_group_list()["groups"]
@@ -114,7 +132,7 @@ def test_del_user(mocker):
     assert "alice" not in group_res["all_users"]["members"]
 
 
-def test_import_user(mocker):
+def test_import_user():
     import csv
     from io import StringIO
 
@@ -159,7 +177,7 @@ def test_import_user(mocker):
             }
         )
         csv_io.seek(0)
-        with message(mocker, "user_import_success"):
+        with message("user_import_success"):
             user_import(csv_io, update=True, delete=True)
 
     group_res = user_group_list()["groups"]
@@ -173,7 +191,7 @@ def test_import_user(mocker):
     assert "alice" not in group_res["dev"]["members"]
 
 
-def test_export_user(mocker):
+def test_export_user():
     result = user_export()
     should_be = (
         "username;firstname;lastname;password;mail;mail-alias;mail-forward;mailbox-quota;groups\r\n"
@@ -184,9 +202,8 @@ def test_export_user(mocker):
     assert result == should_be
 
 
-def test_create_group(mocker):
-
-    with message(mocker, "group_created", group="adminsys"):
+def test_create_group():
+    with message("group_created", group="adminsys"):
         user_group_create("adminsys")
 
     group_res = user_group_list()["groups"]
@@ -195,9 +212,8 @@ def test_create_group(mocker):
     assert group_res["adminsys"]["members"] == []
 
 
-def test_del_group(mocker):
-
-    with message(mocker, "group_deleted", group="dev"):
+def test_del_group():
+    with message("group_deleted", group="dev"):
         user_group_delete("dev")
 
     group_res = user_group_list()["groups"]
@@ -266,46 +282,40 @@ def test_del_group_that_does_not_exist(mocker):
 #
 
 
-def test_update_user(mocker):
-    with message(mocker, "user_updated"):
-        user_update("alice", firstname="NewName", lastname="NewLast")
-
-    info = user_info("alice")
-    assert info["fullname"] == "NewName NewLast"
-
-    with message(mocker, "user_updated"):
+def test_update_user():
+    with message("user_updated"):
         user_update("alice", fullname="New2Name New2Last")
 
     info = user_info("alice")
     assert info["fullname"] == "New2Name New2Last"
 
 
-def test_update_group_add_user(mocker):
-    with message(mocker, "group_updated", group="dev"):
+def test_update_group_add_user():
+    with message("group_updated", group="dev"):
         user_group_update("dev", add=["bob"])
 
     group_res = user_group_list()["groups"]
     assert set(group_res["dev"]["members"]) == {"alice", "bob"}
 
 
-def test_update_group_add_user_already_in(mocker):
-    with message(mocker, "group_user_already_in_group", user="bob", group="apps"):
+def test_update_group_add_user_already_in():
+    with message("group_user_already_in_group", user="bob", group="apps"):
         user_group_update("apps", add=["bob"])
 
     group_res = user_group_list()["groups"]
     assert group_res["apps"]["members"] == ["bob"]
 
 
-def test_update_group_remove_user(mocker):
-    with message(mocker, "group_updated", group="apps"):
+def test_update_group_remove_user():
+    with message("group_updated", group="apps"):
         user_group_update("apps", remove=["bob"])
 
     group_res = user_group_list()["groups"]
     assert group_res["apps"]["members"] == []
 
 
-def test_update_group_remove_user_not_already_in(mocker):
-    with message(mocker, "group_user_not_in_group", user="jack", group="apps"):
+def test_update_group_remove_user_not_already_in():
+    with message("group_user_not_in_group", user="jack", group="apps"):
         user_group_update("apps", remove=["jack"])
 
     group_res = user_group_list()["groups"]
@@ -319,7 +329,7 @@ def test_update_group_remove_user_not_already_in(mocker):
 
 def test_update_user_that_doesnt_exist(mocker):
     with raiseYunohostError(mocker, "user_unknown"):
-        user_update("doesnt_exist", firstname="NewName", lastname="NewLast")
+        user_update("doesnt_exist", fullname="Foo Bar")
 
 
 def test_update_group_that_doesnt_exist(mocker):

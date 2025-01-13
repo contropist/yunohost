@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,19 +17,21 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import os
-import yaml
-import miniupnpc
 
+import os
+from logging import getLogger
+
+import miniupnpc
+import yaml
 from moulinette import m18n
-from yunohost.utils.error import YunohostError, YunohostValidationError
 from moulinette.utils import process
-from moulinette.utils.log import getActionLogger
+
+from yunohost.utils.error import YunohostError, YunohostValidationError
 
 FIREWALL_FILE = "/etc/yunohost/firewall.yml"
 UPNP_CRON_JOB = "/etc/cron.d/yunohost-firewall-upnp"
 
-logger = getActionLogger("yunohost.firewall")
+logger = getLogger("yunohost.firewall")
 
 
 def firewall_allow(
@@ -101,7 +104,9 @@ def firewall_allow(
 
     # Update and reload firewall
     _update_firewall_file(firewall)
-    if not no_reload or (reload_only_if_change and changed):
+    if (not reload_only_if_change and not no_reload) or (
+        reload_only_if_change and changed
+    ):
         return firewall_reload()
 
 
@@ -180,7 +185,9 @@ def firewall_disallow(
 
     # Update and reload firewall
     _update_firewall_file(firewall)
-    if not no_reload or (reload_only_if_change and changed):
+    if (not reload_only_if_change and not no_reload) or (
+        reload_only_if_change and changed
+    ):
         return firewall_reload()
 
 
@@ -252,7 +259,7 @@ def firewall_reload(skip_upnp=False):
 
     # IPv4
     try:
-        process.check_output("iptables -w -L")
+        process.check_output("iptables -n -w -L")
     except process.CalledProcessError as e:
         logger.debug(
             "iptables seems to be not available, it outputs:\n%s",
@@ -285,7 +292,7 @@ def firewall_reload(skip_upnp=False):
 
     # IPv6
     try:
-        process.check_output("ip6tables -L")
+        process.check_output("ip6tables -n -L")
     except process.CalledProcessError as e:
         logger.debug(
             "ip6tables seems to be not available, it outputs:\n%s",
@@ -327,7 +334,7 @@ def firewall_reload(skip_upnp=False):
         # Refresh port forwarding with UPnP
         firewall_upnp(no_refresh=False)
 
-    _run_service_command("reload", "fail2ban")
+    _run_service_command("restart", "fail2ban")
 
     if errors:
         logger.warning(m18n.n("firewall_rules_cmd_failed"))
@@ -398,7 +405,13 @@ def firewall_upnp(action="status", no_refresh=False):
 
         # Discover UPnP device(s)
         logger.debug("discovering UPnP devices...")
-        nb_dev = upnpc.discover()
+        try:
+            nb_dev = upnpc.discover()
+        except Exception:
+            logger.warning("Failed to find any UPnP device on the network")
+            nb_dev = -1
+            enabled = False
+
         logger.debug("found %d UPnP device(s)", int(nb_dev))
         if nb_dev < 1:
             logger.error(m18n.n("upnp_dev_not_found"))
@@ -415,7 +428,6 @@ def firewall_upnp(action="status", no_refresh=False):
                 for protocol in ["TCP", "UDP"]:
                     if protocol + "_TO_CLOSE" in firewall["uPnP"]:
                         for port in firewall["uPnP"][protocol + "_TO_CLOSE"]:
-
                             if not isinstance(port, int):
                                 # FIXME : how should we handle port ranges ?
                                 logger.warning("Can't use UPnP to close '%s'" % port)
@@ -430,7 +442,6 @@ def firewall_upnp(action="status", no_refresh=False):
                         firewall["uPnP"][protocol + "_TO_CLOSE"] = []
 
                     for port in firewall["uPnP"][protocol]:
-
                         if not isinstance(port, int):
                             # FIXME : how should we handle port ranges ?
                             logger.warning("Can't use UPnP to open '%s'" % port)

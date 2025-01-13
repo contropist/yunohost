@@ -1,6 +1,6 @@
-#! /usr/bin/python
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -23,8 +23,8 @@ import sys
 
 import moulinette
 from moulinette import m18n
-from moulinette.utils.log import configure_logging
 from moulinette.interfaces.cli import colorize, get_locale
+from moulinette.utils.log import configure_logging
 
 
 def is_installed():
@@ -32,7 +32,6 @@ def is_installed():
 
 
 def cli(debug, quiet, output_as, timeout, args, parser):
-
     init_logging(interface="cli", debug=debug, quiet=quiet)
 
     # Check that YunoHost is installed
@@ -52,6 +51,12 @@ def cli(debug, quiet, output_as, timeout, args, parser):
 
 def api(debug, host, port):
 
+    allowed_cors_origins = []
+    allowed_cors_origins_file = "/etc/yunohost/.admin-api-allowed-cors-origins"
+
+    if os.path.exists(allowed_cors_origins_file):
+        allowed_cors_origins = open(allowed_cors_origins_file).read().strip().split(",")
+
     init_logging(interface="api", debug=debug)
 
     def is_installed_api():
@@ -66,12 +71,33 @@ def api(debug, host, port):
         actionsmap="/usr/share/yunohost/actionsmap.yml",
         locales_dir="/usr/share/yunohost/locales/",
         routes={("GET", "/installed"): is_installed_api},
+        allowed_cors_origins=allowed_cors_origins,
+    )
+    sys.exit(ret)
+
+
+def portalapi(debug, host, port):
+
+    allowed_cors_origins = []
+    allowed_cors_origins_file = "/etc/yunohost/.portal-api-allowed-cors-origins"
+
+    if os.path.exists(allowed_cors_origins_file):
+        allowed_cors_origins = open(allowed_cors_origins_file).read().strip().split(",")
+
+    # FIXME : is this the logdir we want ? (yolo to work around permission issue)
+    init_logging(interface="portalapi", debug=debug, logdir="/var/log")
+
+    ret = moulinette.api(
+        host=host,
+        port=port,
+        actionsmap="/usr/share/yunohost/actionsmap-portal.yml",
+        locales_dir="/usr/share/yunohost/locales/",
+        allowed_cors_origins=allowed_cors_origins,
     )
     sys.exit(ret)
 
 
 def check_command_is_valid_before_postinstall(args):
-
     allowed_if_not_postinstalled = [
         "tools postinstall",
         "tools versions",
@@ -109,7 +135,6 @@ def init_i18n():
 
 
 def init_logging(interface="cli", debug=False, quiet=False, logdir="/var/log/yunohost"):
-
     logfile = os.path.join(logdir, "yunohost-%s.log" % interface)
 
     if not os.path.isdir(logdir):
@@ -119,17 +144,11 @@ def init_logging(interface="cli", debug=False, quiet=False, logdir="/var/log/yun
         "version": 1,
         "disable_existing_loggers": True,
         "formatters": {
-            "console": {
-                "format": "%(relativeCreated)-5d %(levelname)-8s %(name)s %(funcName)s - %(fmessage)s"
+            "tty-debug": {
+                "format": "%(relativeCreated)-4d %(level_with_color)s %(message)s"
             },
-            "tty-debug": {"format": "%(relativeCreated)-4d %(fmessage)s"},
             "precise": {
-                "format": "%(asctime)-15s %(levelname)-8s %(name)s %(funcName)s - %(fmessage)s"
-            },
-        },
-        "filters": {
-            "action": {
-                "()": "moulinette.utils.log.ActionFilter",
+                "format": "%(asctime)-15s %(levelname)-8s %(name)s.%(funcName)s - %(message)s"
             },
         },
         "handlers": {
@@ -142,11 +161,14 @@ def init_logging(interface="cli", debug=False, quiet=False, logdir="/var/log/yun
                 "level": "DEBUG" if debug else "INFO",
                 "class": "moulinette.interfaces.api.APIQueueHandler",
             },
+            "portalapi": {
+                "level": "DEBUG" if debug else "INFO",
+                "class": "moulinette.interfaces.api.APIQueueHandler",
+            },
             "file": {
                 "class": "logging.FileHandler",
                 "formatter": "precise",
                 "filename": logfile,
-                "filters": ["action"],
             },
         },
         "loggers": {
@@ -168,7 +190,7 @@ def init_logging(interface="cli", debug=False, quiet=False, logdir="/var/log/yun
     }
 
     #  Logging configuration for CLI (or any other interface than api...)     #
-    if interface != "api":
+    if interface not in ["api", "portalapi"]:
         configure_logging(logging_configuration)
 
     #  Logging configuration for API                                          #

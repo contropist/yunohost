@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,9 +17,10 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+
+import logging
 import os
 import re
-import logging
 import time
 
 from moulinette.utils.filesystem import read_file, write_to_file
@@ -29,7 +31,6 @@ logger = logging.getLogger("yunohost.utils.network")
 
 
 def get_public_ip(protocol=4):
-
     assert protocol in [4, 6], (
         "Invalid protocol version for get_public_ip: %s, expected 4 or 6" % protocol
     )
@@ -90,7 +91,6 @@ def get_public_ip_from_remote_server(protocol=4):
 
 
 def get_network_interfaces():
-
     # Get network devices and their addresses (raw infos from 'ip addr')
     devices_raw = {}
     output = check_output("ip addr show")
@@ -111,7 +111,6 @@ def get_network_interfaces():
 
 
 def get_gateway():
-
     output = check_output("ip route show")
     m = re.search(r"default via (.*) dev ([a-z]+[0-9]?)", output)
     if not m:

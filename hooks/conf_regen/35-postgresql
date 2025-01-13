@@ -1,42 +1,62 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#
+# Copyright (c) 2024 YunoHost Contributors
+#
+# This file is part of YunoHost (see https://yunohost.org)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
 
 set -e
 . /usr/share/yunohost/helpers
 
-if ! dpkg --list | grep -q "ii *postgresql-$PSQL_VERSION "
-then
+if ! dpkg --list | grep -q "ii *postgresql-$PSQL_VERSION "; then
     echo 'postgresql is not installed, skipping'
     exit 0
 fi
 
-if [ ! -e "/etc/postgresql/$PSQL_VERSION" ]
-then
+if [ ! -e "/etc/postgresql/$PSQL_VERSION" ]; then
     ynh_die --message="It looks like postgresql was not properly configured ? /etc/postgresql/$PSQL_VERSION is missing ... Could be due to a locale issue, c.f.https://serverfault.com/questions/426989/postgresql-etc-postgresql-doesnt-exist"
 fi
-
 
 do_pre_regen() {
     return 0
 }
 
 do_post_regen() {
-    regen_conf_files=$1
-  
+    #regen_conf_files=$1
+
     # Make sure postgresql is started and enabled
     # (N.B. : to check the active state, we check the cluster state because
     # postgresql could be flagged as active even though the cluster is in
     # failed state because of how the service is configured..)
     systemctl is-active postgresql@$PSQL_VERSION-main -q || ynh_systemd_action --service_name=postgresql --action=restart
     systemctl is-enabled postgresql -q || systemctl enable postgresql --quiet
-  
+
     # If this is the very first time, we define the root password
     # and configure a few things
     if [ ! -f "$PSQL_ROOT_PWD_FILE" ] || [ -z "$(cat $PSQL_ROOT_PWD_FILE)" ]; then
-        ynh_string_random >$PSQL_ROOT_PWD_FILE
+        ynh_string_random > $PSQL_ROOT_PWD_FILE
     fi
-    
+
+    [ ! -e $PSQL_ROOT_PWD_FILE ] || {
+        chown root:postgres $PSQL_ROOT_PWD_FILE
+        chmod 440 $PSQL_ROOT_PWD_FILE
+    }
+
     sudo --login --user=postgres psql -c"ALTER user postgres WITH PASSWORD '$(cat $PSQL_ROOT_PWD_FILE)'" postgres
-  
+
     # force all user to connect to local databases using hashed passwords
     # https://www.postgresql.org/docs/current/static/auth-pg-hba-conf.html#EXAMPLE-PG-HBA.CONF
     # Note: we can't use peer since YunoHost create users with nologin
@@ -47,20 +67,4 @@ do_post_regen() {
     ynh_systemd_action --service_name=postgresql --action=reload
 }
 
-FORCE=${2:-0}
-DRY_RUN=${3:-0}
-
-case "$1" in
-  pre)
-    do_pre_regen $4
-    ;;
-  post)
-    do_post_regen $4
-    ;;
-  *)
-    echo "hook called with unknown argument \`$1'" >&2
-    exit 1
-    ;;
-esac
-
-exit 0
+do_$1_regen ${@:2}

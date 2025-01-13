@@ -1,77 +1,55 @@
-#!/bin/bash
+#!/usr/bin/env python3
+#
+# Copyright (c) 2024 YunoHost Contributors
+#
+# This file is part of YunoHost (see https://yunohost.org)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
 
-set -e
-set -u
+import json
+import sys
 
-PASTE_URL="https://paste.yunohost.org"
+import requests
 
-_die() {
-  printf "Error: %s\n" "$*"
-  exit 1
-}
+SERVER_URL = "https://paste.yunohost.org"
+TIMEOUT = 3
 
-check_dependencies() {
-  curl -V > /dev/null 2>&1 || _die "This script requires curl."
-}
 
-paste_data() {
-  json=$(curl -X POST -s -d "$1" "${PASTE_URL}/documents")
-  [[ -z "$json" ]] && _die "Unable to post the data to the server."
+def create_snippet(data: str) -> str:
+    try:
+        url = f"{SERVER_URL}/documents"
+        response = requests.post(url, data=data.encode("utf-8"), timeout=TIMEOUT)
+        response.raise_for_status()
+        dockey = json.loads(response.text)["key"]
+        return f"{SERVER_URL}/raw/{dockey}"
+    except requests.exceptions.RequestException as e:
+        print(f"\033[31mError: {e}\033[0m", file=sys.stderr)
+        sys.exit(1)
 
-  key=$(echo "$json" \
-    | python3 -c 'import json,sys;o=json.load(sys.stdin);print(o["key"])' \
-        2>/dev/null)
-  [[ -z "$key" ]] && _die "Unable to parse the server response."
 
-  echo "${PASTE_URL}/${key}"
-}
+def main() -> None:
+    output = sys.stdin.read()
 
-usage() {
-  printf "Usage: ${0} [OPTION]...
+    if not output:
+        print("\033[31mError: No input received from stdin.\033[0m", file=sys.stderr)
+        sys.exit(1)
 
-Read from input stream and paste the data to the YunoHost
-Haste server.
+    url = create_snippet(output)
 
-For example, to paste the output of the YunoHost diagnosis, you
-can simply execute the following:
-  yunohost diagnosis show | ${0}
+    print("\033[32mURL: {}\033[0m".format(url))
 
-It will return the URL where you can access the pasted data.
 
-Options:
-  -h, --help   show this help message and exit
-"
-}
-
-main() {
-  # parse options
-  while (( ${#} )); do
-    case "${1}" in
-      --help|-h)
-        usage
-        exit 0
-        ;;
-      *)
-        echo "Unknown parameter detected: ${1}" >&2
-        echo >&2
-        usage >&2
-        exit 1
-        ;;
-    esac
-
-    shift 1
-  done
-
-  # check input stream
-  read -t 0 || {
-    echo -e "Invalid usage: No input is provided.\n" >&2
-    usage
-    exit 1
-  }
-
-  paste_data "$(cat)"
-}
-
-check_dependencies
-
-main "${@}"
+if __name__ == "__main__":
+    main()

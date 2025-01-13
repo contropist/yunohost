@@ -1,3 +1,23 @@
+#!/usr/bin/env python3
+#
+# Copyright (c) 2024 YunoHost Contributors
+#
+# This file is part of YunoHost (see https://yunohost.org)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+
 """
 Simple automated generation of a bash_completion file
 for yunohost command from the actionsmap.
@@ -8,7 +28,9 @@ adds `--help` at the end if one presses [tab] again.
 
 author: Christophe Vuillot
 """
+
 import os
+
 import yaml
 
 THIS_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -31,7 +53,6 @@ def get_dict_actions(OPTION_SUBTREE, category):
 
 
 with open(ACTIONSMAP_FILE, "r") as stream:
-
     # Getting the dictionary containning what actions are possible per category
     OPTION_TREE = yaml.safe_load(stream)
 
@@ -65,7 +86,6 @@ with open(ACTIONSMAP_FILE, "r") as stream:
     os.makedirs(BASH_COMPLETION_FOLDER, exist_ok=True)
 
     with open(BASH_COMPLETION_FILE, "w") as generated_file:
-
         # header of the file
         generated_file.write("#\n")
         generated_file.write("# completion for yunohost\n")

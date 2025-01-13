@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -17,12 +18,13 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 
-import re
 import os
 import pwd
+import re
+
+from moulinette.utils.filesystem import chmod, chown, mkdir, read_file, write_to_file
 
 from yunohost.utils.error import YunohostValidationError
-from moulinette.utils.filesystem import read_file, write_to_file, chown, chmod, mkdir
 
 SSHD_CONFIG_PATH = "/etc/ssh/sshd_config"
 
@@ -81,7 +83,7 @@ def user_ssh_add_key(username, key, comment):
             parents=True,
             uid=user["uid"][0],
         )
-        chmod(os.path.join(user["homeDirectory"][0], ".ssh"), 0o600)
+        chmod(os.path.join(user["homeDirectory"][0], ".ssh"), 0o700)
 
         # create empty file to set good permissions
         write_to_file(authorized_keys_file, "")
@@ -172,7 +174,7 @@ def _get_user_for_ssh(username, attrs=None):
             "username": "root",
             "fullname": "",
             "mail": "",
-            "home_path": root_unix.pw_dir,
+            "homeDirectory": root_unix.pw_dir,
         }
 
     # TODO escape input using https://www.python-ldap.org/doc/html/ldap-filter.html

@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,24 +17,24 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+
 import os
 import re
 from typing import List
 
-from yunohost.settings import settings_get
-from yunohost.diagnosis import Diagnoser
-from yunohost.regenconf import _get_regenconf_infos, _calculate_hash
 from moulinette.utils.filesystem import read_file
+
+from yunohost.diagnosis import Diagnoser
+from yunohost.regenconf import _calculate_hash, _get_regenconf_infos
+from yunohost.settings import settings_get
 
 
 class MyDiagnoser(Diagnoser):
-
     id_ = os.path.splitext(os.path.basename(__file__))[0].split("-")[1]
     cache_duration = 300
     dependencies: List[str] = []
 
     def run(self):
-
         regenconf_modified_files = list(self.manually_modified_files())
 
         if not regenconf_modified_files:
@@ -82,7 +83,6 @@ class MyDiagnoser(Diagnoser):
             )
 
     def manually_modified_files(self):
-
         for category, infos in _get_regenconf_infos().items():
             for path, hash_ in infos["conffiles"].items():
                 if hash_ != _calculate_hash(path):

@@ -1,19 +1,39 @@
+#!/usr/bin/env python3
+#
+# Copyright (c) 2024 YunoHost Contributors
+#
+# This file is part of YunoHost (see https://yunohost.org)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+
 import os
+
+import moulinette
 import pytest
 import yaml
 from mock import patch
 
-import moulinette
-from yunohost.utils.error import YunohostError, YunohostValidationError
-
 from yunohost.settings import (
+    SETTINGS_PATH,
     settings_get,
     settings_list,
-    settings_set,
     settings_reset,
     settings_reset_all,
-    SETTINGS_PATH,
+    settings_set,
 )
+from yunohost.utils.error import YunohostError, YunohostValidationError
 
 EXAMPLE_SETTINGS = """
 [example]
@@ -65,7 +85,6 @@ old_translate = moulinette.core.Translator.translate
 
 
 def _monkeypatch_translator(self, key, *args, **kwargs):
-
     if key.startswith("global_settings_setting_"):
         return f"Dummy translation for {key}"
 
@@ -175,7 +194,6 @@ def test_settings_set_doesexit():
 
 
 def test_settings_set_bad_type_bool():
-
     with patch.object(os, "isatty", return_value=False):
         with pytest.raises(YunohostError):
             settings_set("example.example.boolean", 42)

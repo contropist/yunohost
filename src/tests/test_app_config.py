@@ -1,41 +1,57 @@
+#!/usr/bin/env python3
+#
+# Copyright (c) 2024 YunoHost Contributors
+#
+# This file is part of YunoHost (see https://yunohost.org)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+
 import glob
 import os
 import shutil
+
 import pytest
 from mock import patch
-
-from .conftest import get_test_apps_dir
-
 from moulinette import Moulinette
 from moulinette.utils.filesystem import read_file
 
-from yunohost.domain import _get_maindomain
 from yunohost.app import (
-    app_setting,
-    app_install,
-    app_remove,
     _is_installed,
     app_config_get,
     app_config_set,
+    app_install,
+    app_remove,
+    app_setting,
     app_ssowatconf,
 )
+from yunohost.domain import _get_maindomain
 from yunohost.user import user_create, user_delete
-
 from yunohost.utils.error import YunohostError, YunohostValidationError
+
+from .conftest import get_test_apps_dir
 
 
 def setup_function(function):
-
     clean()
 
 
 def teardown_function(function):
-
     clean()
 
 
 def clean():
-
     # Make sure we have a ssowat
     os.system("mkdir -p /etc/ssowat/")
     app_ssowatconf()
@@ -43,7 +59,6 @@ def clean():
     test_apps = ["config_app", "legacy_app"]
 
     for test_app in test_apps:
-
         if _is_installed(test_app):
             app_remove(test_app)
 
@@ -66,7 +81,6 @@ def clean():
 
 @pytest.fixture()
 def legacy_app(request):
-
     main_domain = _get_maindomain()
 
     app_install(
@@ -85,7 +99,6 @@ def legacy_app(request):
 
 @pytest.fixture()
 def config_app(request):
-
     app_install(
         os.path.join(get_test_apps_dir(), "config_app_ynh"),
         args="",
@@ -101,7 +114,6 @@ def config_app(request):
 
 
 def test_app_config_get(config_app):
-
     user_create("alice", _get_maindomain(), "test123Ynh", fullname="Alice White")
 
     assert isinstance(app_config_get(config_app), dict)
@@ -115,13 +127,11 @@ def test_app_config_get(config_app):
 
 
 def test_app_config_nopanel(legacy_app):
-
     with pytest.raises(YunohostValidationError):
         app_config_get(legacy_app)
 
 
 def test_app_config_get_nonexistentstuff(config_app):
-
     with pytest.raises(YunohostValidationError):
         app_config_get("nonexistent")
 
@@ -134,13 +144,12 @@ def test_app_config_get_nonexistentstuff(config_app):
     with pytest.raises(YunohostValidationError):
         app_config_get(config_app, "main.components.nonexistent")
 
-    app_setting(config_app, "boolean", delete=True)
+    app_setting(config_app, "number", delete=True)
     with pytest.raises(YunohostError):
-        app_config_get(config_app, "main.components.boolean")
+        app_config_get(config_app, "main.components.number")
 
 
 def test_app_config_regular_setting(config_app):
-
     assert app_config_get(config_app, "main.components.boolean") == 0
 
     app_config_set(config_app, "main.components.boolean", "no")
@@ -160,7 +169,6 @@ def test_app_config_regular_setting(config_app):
 
 
 def test_app_config_bind_on_file(config_app):
-
     # c.f. conf/test.php in the config app
     assert '$arg5= "Arg5 value";' in read_file("/var/www/config_app/test.php")
     assert app_config_get(config_app, "bind.variable.arg5") == "Arg5 value"
@@ -184,7 +192,6 @@ def test_app_config_bind_on_file(config_app):
 
 
 def test_app_config_custom_validator(config_app):
-
     # c.f. the config script
     # arg8 is a password that must be at least 8 chars
     assert not os.path.exists("/var/www/config_app/password")
@@ -198,7 +205,6 @@ def test_app_config_custom_validator(config_app):
 
 
 def test_app_config_custom_set(config_app):
-
     assert not os.path.exists("/var/www/config_app/password")
     assert app_setting(config_app, "arg8") is None
 

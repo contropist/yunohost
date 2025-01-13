@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,16 +17,18 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import os
+
 import atexit
 import logging
-import ldap
-import ldap.sasl
+import os
 import time
-import ldap.modlist as modlist
 
+import ldap
+import ldap.modlist as modlist
+import ldap.sasl
 from moulinette import m18n
 from moulinette.core import MoulinetteError
+
 from yunohost.utils.error import YunohostError
 
 logger = logging.getLogger("yunohost.utils.ldap")
@@ -36,7 +39,6 @@ _ldap_interface = None
 
 
 def _get_ldap_interface():
-
     global _ldap_interface
 
     if _ldap_interface is None:
@@ -69,22 +71,37 @@ def _destroy_ldap_interface():
 
 atexit.register(_destroy_ldap_interface)
 
+URI = "ldapi://%2Fvar%2Frun%2Fslapd%2Fldapi"
+BASEDN = "dc=yunohost,dc=org"
+ROOTDN = "gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth"
+USERDN = "uid={username},ou=users,dc=yunohost,dc=org"
+
 
 class LDAPInterface:
-    def __init__(self):
-        logger.debug("initializing ldap interface")
 
-        self.uri = "ldapi://%2Fvar%2Frun%2Fslapd%2Fldapi"
-        self.basedn = "dc=yunohost,dc=org"
-        self.rootdn = "gidNumber=0+uidNumber=0,cn=peercred,cn=external,cn=auth"
+    def __init__(self, user=None, password=None):
+
+        if user is None:
+            if os.getuid() == 0:
+                logger.debug("initializing root ldap interface")
+                self.userdn = ROOTDN
+                self._connect = lambda con: con.sasl_non_interactive_bind_s("EXTERNAL")
+            else:
+                logger.debug("initializing anonymous ldap interface")
+                self.userdn = ""
+                self._connect = lambda con: None
+        else:
+            logger.debug("initializing user ldap interface")
+            self.userdn = USERDN.format(username=user)
+            self._connect = lambda con: con.simple_bind_s(self.userdn, password)
+
         self.connect()
 
     def connect(self):
+
         def _reconnect():
-            con = ldap.ldapobject.ReconnectLDAPObject(
-                self.uri, retry_max=10, retry_delay=2
-            )
-            con.sasl_non_interactive_bind_s("EXTERNAL")
+            con = ldap.ldapobject.ReconnectLDAPObject(URI, retry_max=10, retry_delay=2)
+            self._connect(con)
             return con
 
         try:
@@ -111,7 +128,7 @@ class LDAPInterface:
             logger.warning("Error during ldap authentication process: %s", e)
             raise
         else:
-            if who != self.rootdn:
+            if who != self.userdn:
                 raise MoulinetteError("Not logged in with the expected userdn ?!")
             else:
                 self.con = con
@@ -137,9 +154,9 @@ class LDAPInterface:
 
         """
         if not base:
-            base = self.basedn
+            base = BASEDN
         else:
-            base = base + "," + self.basedn
+            base = base + "," + BASEDN
 
         try:
             result = self.con.search_s(base, ldap.SCOPE_SUBTREE, filter, attrs)
@@ -186,7 +203,7 @@ class LDAPInterface:
             Boolean | MoulinetteError
 
         """
-        dn = rdn + "," + self.basedn
+        dn = f"{rdn},{BASEDN}"
         ldif = modlist.addModlist(attr_dict)
         for i, (k, v) in enumerate(ldif):
             if isinstance(v, list):
@@ -217,7 +234,7 @@ class LDAPInterface:
             Boolean | MoulinetteError
 
         """
-        dn = rdn + "," + self.basedn
+        dn = f"{rdn},{BASEDN}"
         try:
             self.con.delete_s(dn)
         except Exception as e:
@@ -242,7 +259,7 @@ class LDAPInterface:
             Boolean | MoulinetteError
 
         """
-        dn = rdn + "," + self.basedn
+        dn = f"{rdn},{BASEDN}"
         actual_entry = self.search(rdn, attrs=None)
         ldif = modlist.modifyModlist(actual_entry[0], attr_dict, ignore_oldexistent=1)
 

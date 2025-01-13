@@ -1,23 +1,42 @@
-import os
-import pytest
+#!/usr/bin/env python3
+#
+# Copyright (c) 2024 YunoHost Contributors
+#
+# This file is part of YunoHost (see https://yunohost.org)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
 
+import os
+
+import pytest
 from moulinette.utils.process import check_output
 
 from yunohost.app import app_setting
 from yunohost.domain import _get_maindomain
+from yunohost.firewall import firewall_list
+from yunohost.permission import permission_delete, user_permission_list
 from yunohost.utils.resources import (
     AppResource,
-    AppResourceManager,
     AppResourceClassesByType,
+    AppResourceManager,
 )
-from yunohost.permission import user_permission_list, permission_delete
-from yunohost.firewall import firewall_list
 
 dummyfile = "/tmp/dummyappresource-testapp"
 
 
 class DummyAppResource(AppResource):
-
     type = "dummy"
 
     default_properties = {
@@ -26,14 +45,12 @@ class DummyAppResource(AppResource):
     }
 
     def provision_or_update(self, context):
-
         open(self.file, "w").write(self.content)
 
         if self.content == "forbiddenvalue":
             raise Exception("Emeged you used the forbidden value!1!£&")
 
     def deprovision(self, context):
-
         os.system(f"rm -f {self.file}")
 
 
@@ -41,27 +58,27 @@ AppResourceClassesByType["dummy"] = DummyAppResource
 
 
 def setup_function(function):
-
     clean()
 
     os.system("mkdir /etc/yunohost/apps/testapp")
     os.system("echo 'id: testapp' > /etc/yunohost/apps/testapp/settings.yml")
     os.system("echo 'packaging_format = 2' > /etc/yunohost/apps/testapp/manifest.toml")
     os.system("echo 'id = \"testapp\"' >> /etc/yunohost/apps/testapp/manifest.toml")
+    os.system(
+        "echo 'description.en = \"A dummy app to test app resources\"' >> /etc/yunohost/apps/testapp/manifest.toml"
+    )
 
 
 def teardown_function(function):
-
     clean()
 
 
 def clean():
-
     os.system(f"rm -f {dummyfile}")
     os.system("rm -rf /etc/yunohost/apps/testapp")
     os.system("rm -rf /var/www/testapp")
     os.system("rm -rf /home/yunohost.app/testapp")
-    os.system("apt remove lolcat sl nyancat yarn >/dev/null 2>/dev/null")
+    os.system("apt remove lolcat sl nyancat influxdb2 >/dev/null 2>/dev/null")
     os.system("userdel testapp 2>/dev/null")
 
     for p in user_permission_list()["permissions"]:
@@ -70,7 +87,6 @@ def clean():
 
 
 def test_provision_dummy():
-
     current = {"resources": {}}
     wanted = {"resources": {"dummy": {}}}
 
@@ -82,7 +98,6 @@ def test_provision_dummy():
 
 
 def test_deprovision_dummy():
-
     current = {"resources": {"dummy": {}}}
     wanted = {"resources": {}}
 
@@ -96,7 +111,6 @@ def test_deprovision_dummy():
 
 
 def test_provision_dummy_nondefaultvalue():
-
     current = {"resources": {}}
     wanted = {"resources": {"dummy": {"content": "bar"}}}
 
@@ -108,7 +122,6 @@ def test_provision_dummy_nondefaultvalue():
 
 
 def test_update_dummy():
-
     current = {"resources": {"dummy": {}}}
     wanted = {"resources": {"dummy": {"content": "bar"}}}
 
@@ -122,7 +135,6 @@ def test_update_dummy():
 
 
 def test_update_dummy_failwithrollback():
-
     current = {"resources": {"dummy": {}}}
     wanted = {"resources": {"dummy": {"content": "forbiddenvalue"}}}
 
@@ -137,7 +149,6 @@ def test_update_dummy_failwithrollback():
 
 
 def test_resource_system_user():
-
     r = AppResourceClassesByType["system_user"]
 
     conf = {}
@@ -161,7 +172,6 @@ def test_resource_system_user():
 
 
 def test_resource_install_dir():
-
     r = AppResourceClassesByType["install_dir"]
     conf = {"owner": "nobody:rx", "group": "nogroup:rx"}
 
@@ -196,7 +206,6 @@ def test_resource_install_dir():
 
 
 def test_resource_data_dir():
-
     r = AppResourceClassesByType["data_dir"]
     conf = {"owner": "nobody:rx", "group": "nogroup:rx"}
 
@@ -228,7 +237,6 @@ def test_resource_data_dir():
 
 
 def test_resource_ports():
-
     r = AppResourceClassesByType["ports"]
     conf = {}
 
@@ -244,7 +252,6 @@ def test_resource_ports():
 
 
 def test_resource_ports_several():
-
     r = AppResourceClassesByType["ports"]
     conf = {"main": {"default": 12345}, "foobar": {"default": 23456}}
 
@@ -263,7 +270,6 @@ def test_resource_ports_several():
 
 
 def test_resource_ports_firewall():
-
     r = AppResourceClassesByType["ports"]
     conf = {"main": {"default": 12345}}
 
@@ -283,7 +289,6 @@ def test_resource_ports_firewall():
 
 
 def test_resource_database():
-
     r = AppResourceClassesByType["database"]
     conf = {"type": "mysql"}
 
@@ -308,22 +313,21 @@ def test_resource_database():
 
 
 def test_resource_apt():
-
     r = AppResourceClassesByType["apt"]
     conf = {
         "packages": "nyancat, sl",
         "extras": {
-            "yarn": {
-                "repo": "deb https://dl.yarnpkg.com/debian/ stable main",
-                "key": "https://dl.yarnpkg.com/debian/pubkey.gpg",
-                "packages": "yarn",
+            "influxdb": {
+                "repo": "deb https://repos.influxdata.com/debian stable main",
+                "key": "https://repos.influxdata.com/influxdata-archive_compat.key",
+                "packages": "influxdb2",
             }
         },
     }
 
     assert os.system("dpkg --list | grep -q 'ii *nyancat '") != 0
     assert os.system("dpkg --list | grep -q 'ii *sl '") != 0
-    assert os.system("dpkg --list | grep -q 'ii *yarn '") != 0
+    assert os.system("dpkg --list | grep -q 'ii *influxdb2 '") != 0
     assert os.system("dpkg --list | grep -q 'ii *lolcat '") != 0
     assert os.system("dpkg --list | grep -q 'ii *testapp-ynh-deps '") != 0
 
@@ -331,7 +335,7 @@ def test_resource_apt():
 
     assert os.system("dpkg --list | grep -q 'ii *nyancat '") == 0
     assert os.system("dpkg --list | grep -q 'ii *sl '") == 0
-    assert os.system("dpkg --list | grep -q 'ii *yarn '") == 0
+    assert os.system("dpkg --list | grep -q 'ii *influxdb2 '") == 0
     assert (
         os.system("dpkg --list | grep -q 'ii *lolcat '") != 0
     )  # Lolcat shouldnt be installed yet
@@ -342,7 +346,7 @@ def test_resource_apt():
 
     assert os.system("dpkg --list | grep -q 'ii *nyancat '") == 0
     assert os.system("dpkg --list | grep -q 'ii *sl '") == 0
-    assert os.system("dpkg --list | grep -q 'ii *yarn '") == 0
+    assert os.system("dpkg --list | grep -q 'ii *influxdb2 '") == 0
     assert os.system("dpkg --list | grep -q 'ii *lolcat '") == 0
     assert os.system("dpkg --list | grep -q 'ii *testapp-ynh-deps '") == 0
 
@@ -350,13 +354,12 @@ def test_resource_apt():
 
     assert os.system("dpkg --list | grep -q 'ii *nyancat '") != 0
     assert os.system("dpkg --list | grep -q 'ii *sl '") != 0
-    assert os.system("dpkg --list | grep -q 'ii *yarn '") != 0
+    assert os.system("dpkg --list | grep -q 'ii *influxdb2 '") != 0
     assert os.system("dpkg --list | grep -q 'ii *lolcat '") != 0
     assert os.system("dpkg --list | grep -q 'ii *testapp-ynh-deps '") != 0
 
 
 def test_resource_permissions():
-
     maindomain = _get_maindomain()
     os.system(f"echo 'domain: {maindomain}' >> /etc/yunohost/apps/testapp/settings.yml")
     os.system("echo 'path: /testapp' >> /etc/yunohost/apps/testapp/settings.yml")
@@ -367,7 +370,7 @@ def test_resource_permissions():
     conf = {
         "main": {
             "url": "/",
-            "allowed": "visitors"
+            "allowed": "visitors",
             # TODO: test protected?
         },
     }

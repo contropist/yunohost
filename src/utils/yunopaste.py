@@ -1,5 +1,6 @@
+#!/usr/bin/env python3
 #
-# Copyright (c) 2022 YunoHost Contributors
+# Copyright (c) 2024 YunoHost Contributors
 #
 # This file is part of YunoHost (see https://yunohost.org)
 #
@@ -16,19 +17,20 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import requests
+
 import json
 import logging
 
+import requests
+
 from yunohost.domain import _get_maindomain, domain_list
-from yunohost.utils.network import get_public_ip
 from yunohost.utils.error import YunohostError
+from yunohost.utils.network import get_public_ip
 
 logger = logging.getLogger("yunohost.utils.yunopaste")
 
 
 def yunopaste(data):
-
     paste_server = "https://paste.yunohost.org"
 
     try:

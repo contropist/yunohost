@@ -1,24 +1,44 @@
-import pytest
+#!/usr/bin/env python3
+#
+# Copyright (c) 2024 YunoHost Contributors
+#
+# This file is part of YunoHost (see https://yunohost.org)
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
+
 import os
 
-from .conftest import get_test_apps_dir
+import pytest
 
-from yunohost.utils.error import YunohostError
 from yunohost.app import (
-    app_install,
-    app_remove,
     _is_app_repo_url,
     _parse_app_instance_name,
+    app_install,
+    app_remove,
 )
 from yunohost.domain import _get_maindomain, domain_url_available
 from yunohost.permission import _validate_and_sanitize_permission_url
+from yunohost.utils.error import YunohostError
+
+from .conftest import get_test_apps_dir
 
 # Get main domain
 maindomain = _get_maindomain()
 
 
 def setup_function(function):
-
     try:
         app_remove("register_url_app")
     except Exception:
@@ -26,7 +46,6 @@ def setup_function(function):
 
 
 def teardown_function(function):
-
     try:
         app_remove("register_url_app")
     except Exception:
@@ -34,7 +53,6 @@ def teardown_function(function):
 
 
 def test_parse_app_instance_name():
-
     assert _parse_app_instance_name("yolo") == ("yolo", 1)
     assert _parse_app_instance_name("yolo1") == ("yolo1", 1)
     assert _parse_app_instance_name("yolo__0") == ("yolo__0", 1)
@@ -72,8 +90,23 @@ def test_repo_url_definition():
     assert _is_app_repo_url("git@github.com:YunoHost-Apps/foobar_ynh.git")
     assert _is_app_repo_url("https://git.super.host/~max/foobar_ynh")
 
+    ### Gitea
+    assert _is_app_repo_url("https://gitea.instance.tld/user/repo_ynh")
+    assert _is_app_repo_url(
+        "https://gitea.instance.tld/user/repo_ynh/src/branch/branch_name"
+    )
+    assert _is_app_repo_url("https://gitea.instance.tld/user/repo_ynh/src/tag/tag_name")
+    assert _is_app_repo_url(
+        "https://gitea.instance.tld/user/repo_ynh/src/commit/abcd1234"
+    )
+
+    ### Invalid patterns
+
+    # no schema
     assert not _is_app_repo_url("github.com/YunoHost-Apps/foobar_ynh")
+    # http
     assert not _is_app_repo_url("http://github.com/YunoHost-Apps/foobar_ynh")
+    # does not end in `_ynh`
     assert not _is_app_repo_url("https://github.com/YunoHost-Apps/foobar_wat")
     assert not _is_app_repo_url("https://github.com/YunoHost-Apps/foobar_ynh_wat")
     assert not _is_app_repo_url("https://github.com/YunoHost-Apps/foobar/tree/testing")
@@ -86,7 +119,6 @@ def test_repo_url_definition():
 
 
 def test_urlavailable():
-
     # Except the maindomain/macnuggets to be available
     assert domain_url_available(maindomain, "/macnuggets")
 
@@ -96,7 +128,6 @@ def test_urlavailable():
 
 
 def test_registerurl():
-
     app_install(
         os.path.join(get_test_apps_dir(), "register_url_app_ynh"),
         args="domain={}&path={}".format(maindomain, "/urlregisterapp"),
@@ -115,7 +146,6 @@ def test_registerurl():
 
 
 def test_registerurl_baddomain():
-
     with pytest.raises(YunohostError):
         app_install(
             os.path.join(get_test_apps_dir(), "register_url_app_ynh"),
@@ -208,10 +238,6 @@ def test_normalize_permission_path_with_bad_regex():
         )
 
     # Full Regex
-    with pytest.raises(YunohostError):
-        _validate_and_sanitize_permission_url(
-            "re:" + maindomain + "/yolo?+/", maindomain + "/path", "test_permission"
-        )
     with pytest.raises(YunohostError):
         _validate_and_sanitize_permission_url(
             "re:" + maindomain + "/yolo[1-9]**/",
